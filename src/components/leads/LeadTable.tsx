@@ -184,8 +184,8 @@ export default function LeadTable() {
                                         key={key}
                                         onClick={() => toggleArrayFilter(statusFilter, setStatusFilter, key)}
                                         className={`badge cursor-pointer ${statusFilter.includes(key)
-                                                ? value.color
-                                                : "bg-gray-100 text-gray-600"
+                                            ? value.color
+                                            : "bg-gray-100 text-gray-600"
                                             }`}
                                     >
                                         {value.label}
@@ -205,8 +205,8 @@ export default function LeadTable() {
                                             toggleArrayFilter(sourceFilter, setSourceFilter, source.id)
                                         }
                                         className={`badge cursor-pointer ${sourceFilter.includes(source.id)
-                                                ? "bg-primary-100 text-primary-700"
-                                                : "bg-gray-100 text-gray-600"
+                                            ? "bg-primary-100 text-primary-700"
+                                            : "bg-gray-100 text-gray-600"
                                             }`}
                                     >
                                         {source.name}
@@ -224,13 +224,13 @@ export default function LeadTable() {
                                         key={tag.id}
                                         onClick={() => toggleArrayFilter(tagFilter, setTagFilter, tag.id)}
                                         className={`badge cursor-pointer ${tagFilter.includes(tag.id)
-                                                ? "ring-2 ring-offset-1"
-                                                : "opacity-60"
+                                            ? "ring-2 ring-offset-1"
+                                            : "opacity-60"
                                             }`}
                                         style={{
                                             backgroundColor: `${tag.color}20`,
                                             color: tag.color,
-                                            ringColor: tag.color,
+                                            ['--tw-ring-color' as any]: tag.color,
                                         }}
                                     >
                                         {tag.name}
