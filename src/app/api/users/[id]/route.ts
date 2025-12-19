@@ -1,17 +1,9 @@
+export const dynamic = 'force-dynamic';
+
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-
-export const dynamic = 'force-dynamic';
-
-// GET handler to prevent build-time static generation issues
-export async function GET(
-    request: NextRequest,
-    { params }: { params: { id: string } }
-) {
-    return NextResponse.json({ message: "Method Not Allowed" }, { status: 405 });
-}
 
 // DELETE user (admin only)
 export async function DELETE(
