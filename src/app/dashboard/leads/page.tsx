@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import LeadTable from "@/components/leads/LeadTable";
 
+export const dynamic = 'force-dynamic';
+
 export default function LeadsPage() {
     return (
         <div className="space-y-6">

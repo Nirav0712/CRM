@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { Loader2, Shield, Network, Save, CheckCircle, RefreshCw } from "lucide-react";

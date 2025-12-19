@@ -3,6 +3,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+
+export const dynamic = 'force-dynamic';
+
 import {
     Users,
     TrendingUp,
