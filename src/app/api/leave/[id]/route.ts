@@ -5,6 +5,11 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = 'force-dynamic';
 
+// GET handler to prevent build-time static generation issues
+export async function GET() {
+    return NextResponse.json({ message: "Method Not Allowed" }, { status: 405 });
+}
+
 // PUT approve/reject leave request (admin only)
 export async function PUT(
     request: NextRequest,
