@@ -2,6 +2,8 @@ import LeadForm from "@/components/leads/LeadForm";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
+export const dynamic = 'force-dynamic';
+
 export default function NewLeadPage() {
     return (
         <div className="max-w-4xl mx-auto space-y-6">

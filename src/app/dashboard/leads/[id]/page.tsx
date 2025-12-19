@@ -2,6 +2,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
+
+export const dynamic = 'force-dynamic';
+
 import Link from "next/link";
 import { formatCurrency, formatDate, formatDateTime, LEAD_STATUSES, LeadStatus } from "@/lib/utils";
 import StatusBadge from "@/components/leads/StatusBadge";

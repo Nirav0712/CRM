@@ -4,6 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import LeadForm from "@/components/leads/LeadForm";
+
+export const dynamic = 'force-dynamic';
+
 import { ArrowLeft } from "lucide-react";
 
 interface PageProps {
