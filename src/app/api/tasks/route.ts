@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,13 +19,13 @@ export async function GET(request: NextRequest) {
         const date = searchParams.get("date");
         const month = searchParams.get("month"); // Format: YYYY-MM
 
-        const where: any = {};
+        let query: any = db.collection("tasks");
 
         // Staff can only see their own tasks
-        if (session.user.role === "STAFF") {
-            where.userId = session.user.id;
+        if ((session.user as any).role === "STAFF") {
+            query = query.where("userId", "==", (session.user as any).id);
         } else if (userId) {
-            where.userId = userId;
+            query = query.where("userId", "==", userId);
         }
 
         // Filter by specific date
@@ -35,10 +35,7 @@ export async function GET(request: NextRequest) {
             const nextDay = new Date(taskDate);
             nextDay.setDate(nextDay.getDate() + 1);
 
-            where.date = {
-                gte: taskDate,
-                lt: nextDay,
-            };
+            query = query.where("date", ">=", taskDate).where("date", "<", nextDay);
         }
 
         // Filter by month
@@ -46,27 +43,55 @@ export async function GET(request: NextRequest) {
             const [year, monthNum] = month.split("-").map(Number);
             const startDate = new Date(year, monthNum - 1, 1);
             const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-            where.date = {
-                gte: startDate,
-                lte: endDate,
-            };
+            query = query.where("date", ">=", startDate).where("date", "<=", endDate);
         }
 
-        const tasks = await prisma.task.findMany({
-            where,
-            include: {
-                user: {
-                    select: { id: true, name: true, email: true },
-                },
-                notes: {
-                    include: {
-                        user: { select: { id: true, name: true } },
-                    },
-                    orderBy: { createdAt: "desc" },
-                },
-            },
-            orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-        });
+        const snapshot = await query.orderBy("date", "desc").get();
+        const tasks = await Promise.all(snapshot.docs.map(async (doc: any) => {
+            const data = doc.data();
+
+            // Fetch user info
+            let user = null;
+            if (data.userId) {
+                const userDoc = await db.collection("users").doc(data.userId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    user = { id: userDoc.id, name: userData?.name, email: userData?.email };
+                }
+            }
+
+            // Fetch notes
+            const notesSnapshot = await db.collection("taskNotes")
+                .where("taskId", "==", doc.id)
+                .orderBy("createdAt", "desc")
+                .get();
+
+            const notes = await Promise.all(notesSnapshot.docs.map(async (noteDoc: any) => {
+                const noteData = noteDoc.data();
+                let noteUser = null;
+                if (noteData.userId) {
+                    const noteUserDoc = await db.collection("users").doc(noteData.userId).get();
+                    if (noteUserDoc.exists) {
+                        noteUser = { id: noteUserDoc.id, name: noteUserDoc.data()?.name };
+                    }
+                }
+                return {
+                    id: noteDoc.id,
+                    ...noteData,
+                    createdAt: noteData.createdAt?.toDate(),
+                    user: noteUser
+                };
+            }));
+
+            return {
+                id: doc.id,
+                ...data,
+                date: data.date?.toDate(),
+                createdAt: data.createdAt?.toDate(),
+                user,
+                notes
+            };
+        }));
 
         return NextResponse.json(tasks);
     } catch (error) {
@@ -97,26 +122,28 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const task = await prisma.task.create({
-            data: {
-                userId: session.user.id,
-                title,
-                description,
-                date: new Date(date),
-                hoursWorked: parseFloat(hoursWorked),
-                status,
-            },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-                notes: {
-                    include: {
-                        user: { select: { id: true, name: true } },
-                    },
-                },
-            },
-        });
+        const now = new Date();
+        const taskData = {
+            userId: (session.user as any).id,
+            title,
+            description,
+            date: new Date(date),
+            hoursWorked: parseFloat(hoursWorked),
+            status,
+            createdAt: now,
+            updatedAt: now,
+        };
 
-        return NextResponse.json(task, { status: 201 });
+        const docRef = await db.collection("tasks").add(taskData);
+
+        const result = {
+            id: docRef.id,
+            ...taskData,
+            user: { id: (session.user as any).id, name: session.user.name, email: session.user.email },
+            notes: []
+        };
+
+        return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error("Error creating task:", error);
         return NextResponse.json(

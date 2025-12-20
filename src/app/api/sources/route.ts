@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +14,11 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const sources = await prisma.leadSource.findMany({
-            orderBy: { name: "asc" },
-        });
+        const snapshot = await db.collection("leadSources").orderBy("name", "asc").get();
+        const sources = snapshot.docs.map((doc: any) => ({
+            id: doc.id,
+            ...doc.data(),
+        }));
 
         return NextResponse.json(sources);
     } catch (error) {
@@ -47,19 +49,24 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if source already exists
-        const existing = await prisma.leadSource.findUnique({
-            where: { name },
-        });
+        const existingSnapshot = await db.collection("leadSources")
+            .where("name", "==", name)
+            .limit(1)
+            .get();
 
-        if (existing) {
-            return NextResponse.json(existing);
+        if (!existingSnapshot.empty) {
+            const existing = existingSnapshot.docs[0];
+            return NextResponse.json({ id: existing.id, ...existing.data() });
         }
 
-        const source = await prisma.leadSource.create({
-            data: { name },
-        });
+        const newSource = {
+            name,
+            createdAt: new Date()
+        };
 
-        return NextResponse.json(source, { status: 201 });
+        const docRef = await db.collection("leadSources").add(newSource);
+
+        return NextResponse.json({ id: docRef.id, ...newSource }, { status: 201 });
     } catch (error) {
         console.error("Error creating source:", error);
         return NextResponse.json(

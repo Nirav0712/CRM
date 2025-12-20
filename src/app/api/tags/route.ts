@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,9 +14,8 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const tags = await prisma.tag.findMany({
-            orderBy: { name: "asc" },
-        });
+        const snapshot = await db.collection("tags").orderBy("name", "asc").get();
+        const tags = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
 
         return NextResponse.json(tags);
     } catch (error) {
@@ -47,19 +46,25 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if tag already exists
-        const existing = await prisma.tag.findUnique({
-            where: { name },
-        });
+        const existingSnapshot = await db.collection("tags")
+            .where("name", "==", name)
+            .limit(1)
+            .get();
 
-        if (existing) {
-            return NextResponse.json(existing);
+        if (!existingSnapshot.empty) {
+            const existing = existingSnapshot.docs[0];
+            return NextResponse.json({ id: existing.id, ...existing.data() });
         }
 
-        const tag = await prisma.tag.create({
-            data: { name, color },
-        });
+        const newTag = {
+            name,
+            color,
+            createdAt: new Date()
+        };
 
-        return NextResponse.json(tag, { status: 201 });
+        const docRef = await db.collection("tags").add(newTag);
+
+        return NextResponse.json({ id: docRef.id, ...newTag }, { status: 201 });
     } catch (error) {
         console.error("Error creating tag:", error);
         return NextResponse.json(

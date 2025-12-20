@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 // GET single task
 export async function GET(
@@ -17,29 +17,60 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const task = await prisma.task.findUnique({
-            where: { id: params.id },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-                notes: {
-                    include: {
-                        user: { select: { id: true, name: true } },
-                    },
-                    orderBy: { createdAt: "desc" },
-                },
-            },
-        });
+        const taskDoc = await db.collection("tasks").doc(params.id).get();
 
-        if (!task) {
+        if (!taskDoc.exists) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
+        const taskData = taskDoc.data()!;
+
         // Staff can only view their own tasks
-        if (session.user.role === "STAFF" && task.userId !== session.user.id) {
+        if ((session.user as any).role === "STAFF" && taskData.userId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        return NextResponse.json(task);
+        // Fetch user info
+        let user = null;
+        if (taskData.userId) {
+            const userDoc = await db.collection("users").doc(taskData.userId).get();
+            if (userDoc.exists) {
+                const userData = userDoc.data();
+                user = { id: userDoc.id, name: userData?.name, email: userData?.email };
+            }
+        }
+
+        // Fetch notes
+        const notesSnapshot = await db.collection("taskNotes")
+            .where("taskId", "==", params.id)
+            .orderBy("createdAt", "desc")
+            .get();
+
+        const notes = await Promise.all(notesSnapshot.docs.map(async (noteDoc: any) => {
+            const noteData = noteDoc.data();
+            let noteUser = null;
+            if (noteData.userId) {
+                const noteUserDoc = await db.collection("users").doc(noteData.userId).get();
+                if (noteUserDoc.exists) {
+                    noteUser = { id: noteUserDoc.id, name: noteUserDoc.data()?.name };
+                }
+            }
+            return {
+                id: noteDoc.id,
+                ...noteData,
+                createdAt: noteData.createdAt?.toDate(),
+                user: noteUser
+            };
+        }));
+
+        return NextResponse.json({
+            id: taskDoc.id,
+            ...taskData,
+            date: taskData.date?.toDate(),
+            createdAt: taskData.createdAt?.toDate(),
+            user,
+            notes
+        });
     } catch (error) {
         console.error("Error fetching task:", error);
         return NextResponse.json(
@@ -61,43 +92,40 @@ export async function PUT(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const existingTask = await prisma.task.findUnique({
-            where: { id: params.id },
-        });
+        const taskRef = db.collection("tasks").doc(params.id);
+        const taskDoc = await taskRef.get();
 
-        if (!existingTask) {
+        if (!taskDoc.exists) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
+        const existingTask = taskDoc.data()!;
+
         // Staff can only edit their own tasks
-        if (session.user.role === "STAFF" && existingTask.userId !== session.user.id) {
+        if ((session.user as any).role === "STAFF" && existingTask.userId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
         const body = await request.json();
         const { title, description, hoursWorked, status, date } = body;
 
-        const task = await prisma.task.update({
-            where: { id: params.id },
-            data: {
-                title,
-                description,
-                hoursWorked: hoursWorked !== undefined ? parseFloat(hoursWorked) : undefined,
-                status,
-                date: date ? new Date(date) : undefined,
-            },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-                notes: {
-                    include: {
-                        user: { select: { id: true, name: true } },
-                    },
-                    orderBy: { createdAt: "desc" },
-                },
-            },
-        });
+        const updateData: any = {
+            updatedAt: new Date()
+        };
+        if (title !== undefined) updateData.title = title;
+        if (description !== undefined) updateData.description = description;
+        if (hoursWorked !== undefined) updateData.hoursWorked = parseFloat(hoursWorked);
+        if (status !== undefined) updateData.status = status;
+        if (date !== undefined) updateData.date = new Date(date);
 
-        return NextResponse.json(task);
+        await taskRef.update(updateData);
+
+        return NextResponse.json({
+            id: params.id,
+            ...existingTask,
+            ...updateData,
+            date: updateData.date || existingTask.date?.toDate()
+        });
     } catch (error) {
         console.error("Error updating task:", error);
         return NextResponse.json(
@@ -119,22 +147,27 @@ export async function DELETE(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const task = await prisma.task.findUnique({
-            where: { id: params.id },
-        });
+        const taskRef = db.collection("tasks").doc(params.id);
+        const taskDoc = await taskRef.get();
 
-        if (!task) {
+        if (!taskDoc.exists) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
+        const taskData = taskDoc.data()!;
+
         // Staff can only delete their own tasks, admin can delete any
-        if (session.user.role === "STAFF" && task.userId !== session.user.id) {
+        if ((session.user as any).role === "STAFF" && taskData.userId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        await prisma.task.delete({
-            where: { id: params.id },
-        });
+        await taskRef.delete();
+
+        // Also delete associated notes
+        const notesSnapshot = await db.collection("taskNotes").where("taskId", "==", params.id).get();
+        const batch = db.batch();
+        notesSnapshot.docs.forEach((doc: any) => batch.delete(doc.ref));
+        await batch.commit();
 
         return NextResponse.json({ message: "Task deleted" });
     } catch (error) {

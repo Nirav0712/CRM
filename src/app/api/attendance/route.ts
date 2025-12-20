@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
@@ -19,13 +19,13 @@ export async function GET(request: NextRequest) {
         const month = searchParams.get("month"); // Format: YYYY-MM
         const status = searchParams.get("status");
 
-        const where: any = {};
+        let query: any = db.collection("attendance");
 
         // Staff can only see their own attendance
-        if (session.user.role === "STAFF") {
-            where.userId = session.user.id;
+        if ((session.user as any).role === "STAFF") {
+            query = query.where("userId", "==", (session.user as any).id);
         } else if (userId) {
-            where.userId = userId;
+            query = query.where("userId", "==", userId);
         }
 
         // Filter by month
@@ -33,26 +33,34 @@ export async function GET(request: NextRequest) {
             const [year, monthNum] = month.split("-").map(Number);
             const startDate = new Date(year, monthNum - 1, 1);
             const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-            where.date = {
-                gte: startDate,
-                lte: endDate,
-            };
+            query = query.where("date", ">=", startDate).where("date", "<=", endDate);
         }
 
         // Filter by approval status
         if (status) {
-            where.approvalStatus = status;
+            query = query.where("approvalStatus", "==", status);
         }
 
-        const attendance = await prisma.attendance.findMany({
-            where,
-            include: {
-                user: {
-                    select: { id: true, name: true, email: true },
-                },
-            },
-            orderBy: { date: "desc" },
-        });
+        const snapshot = await query.orderBy("date", "desc").get();
+        const attendance = await Promise.all(snapshot.docs.map(async (doc: any) => {
+            const data = doc.data();
+            let user = null;
+            if (data.userId) {
+                const userDoc = await db.collection("users").doc(data.userId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    user = { id: userDoc.id, name: userData?.name, email: userData?.email };
+                }
+            }
+            return {
+                id: doc.id,
+                ...data,
+                date: data.date?.toDate(),
+                checkIn: data.checkIn?.toDate(),
+                checkOut: data.checkOut?.toDate(),
+                user
+            };
+        }));
 
         return NextResponse.json(attendance);
     } catch (error) {
@@ -74,12 +82,14 @@ export async function POST(request: NextRequest) {
         }
 
         // IP Restriction Check
-        if (session.user.role === "STAFF") { // Only restrict staff? Or everyone? Usually staff.
-            const settings = await prisma.systemSettings.findUnique({
-                where: { key: "office_ip" },
-            });
+        if ((session.user as any).role === "STAFF") {
+            const settingsSnapshot = await db.collection("systemSettings")
+                .where("key", "==", "office_ip")
+                .limit(1)
+                .get();
 
-            if (settings?.value) {
+            if (!settingsSnapshot.empty) {
+                const settings = settingsSnapshot.docs[0].data();
                 const forwardedFor = request.headers.get("x-forwarded-for");
                 let clientIp = forwardedFor ? forwardedFor.split(",")[0] : "127.0.0.1";
                 if (clientIp === "::1") clientIp = "127.0.0.1";
@@ -103,51 +113,38 @@ export async function POST(request: NextRequest) {
         const attendanceDate = new Date(date);
         attendanceDate.setHours(0, 0, 0, 0);
 
-        // Check if attendance already exists for this date
-        const existing = await prisma.attendance.findUnique({
-            where: {
-                userId_date: {
-                    userId: session.user.id,
-                    date: attendanceDate,
-                },
-            },
-        });
+        // Use a composite ID for uniqueness: userId_YYYY-MM-DD
+        const dateStr = attendanceDate.toISOString().split('T')[0];
+        const docId = `${(session.user as any).id}_${dateStr}`;
+        const attendanceRef = db.collection("attendance").doc(docId);
+        const doc = await attendanceRef.get();
 
-        if (existing) {
-            // Update existing attendance
-            const updated = await prisma.attendance.update({
-                where: { id: existing.id },
-                data: {
-                    status,
-                    checkIn: checkIn ? new Date(checkIn) : undefined,
-                    checkOut: checkOut ? new Date(checkOut) : undefined,
-                    note,
-                    approvalStatus: "PENDING", // Reset to pending on update
-                },
-                include: {
-                    user: { select: { id: true, name: true, email: true } },
-                },
-            });
-            return NextResponse.json(updated);
+        const data: any = {
+            userId: (session.user as any).id,
+            date: attendanceDate,
+            status,
+            checkIn: checkIn ? new Date(checkIn) : (doc.exists ? doc.data()?.checkIn : null),
+            checkOut: checkOut ? new Date(checkOut) : (doc.exists ? doc.data()?.checkOut : null),
+            note: note !== undefined ? note : (doc.exists ? doc.data()?.note : null),
+            approvalStatus: "PENDING",
+            updatedAt: new Date(),
+        };
+
+        if (!doc.exists) {
+            data.createdAt = new Date();
+            await attendanceRef.set(data);
+        } else {
+            await attendanceRef.update(data);
         }
 
-        // Create new attendance record
-        const attendance = await prisma.attendance.create({
-            data: {
-                userId: session.user.id,
-                date: attendanceDate,
-                status,
-                checkIn: checkIn ? new Date(checkIn) : null,
-                checkOut: checkOut ? new Date(checkOut) : null,
-                note,
-                approvalStatus: "PENDING",
-            },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-            },
-        });
+        const result = {
+            id: docId,
+            ...data,
+            date: data.date.toISOString(),
+            // Need to fetch user details for response to match original behavior
+        };
 
-        return NextResponse.json(attendance, { status: 201 });
+        return NextResponse.json(result, { status: doc.exists ? 200 : 210 });
     } catch (error) {
         console.error("Error marking attendance:", error);
         return NextResponse.json(

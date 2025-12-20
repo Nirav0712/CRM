@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 // PUT approve/reject leave request (admin only)
 export async function PUT(
@@ -17,7 +17,7 @@ export async function PUT(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        if (session.user.role !== "ADMIN") {
+        if ((session.user as any).role !== "ADMIN") {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
@@ -31,54 +31,68 @@ export async function PUT(
             );
         }
 
-        const leaveRequest = await prisma.leaveRequest.update({
-            where: { id: params.id },
-            data: {
-                status,
-                approvedBy: session.user.name,
-                approvedAt: new Date(),
-                adminNote,
-            },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-            },
-        });
+        const leaveRef = db.collection("leaveRequests").doc(params.id);
+        const leaveDoc = await leaveRef.get();
+
+        if (!leaveDoc.exists) {
+            return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
+        }
+
+        const leaveData = leaveDoc.data()!;
+
+        const updateData: any = {
+            status,
+            approvedBy: session.user.name,
+            approvedAt: new Date(),
+            adminNote,
+            updatedAt: new Date()
+        };
+
+        await leaveRef.update(updateData);
 
         // If leave is approved, create attendance records as ON_LEAVE
         if (status === "APPROVED") {
-            const start = new Date(leaveRequest.startDate);
-            const end = new Date(leaveRequest.endDate);
+            const start = leaveData.startDate.toDate();
+            const end = leaveData.endDate.toDate();
 
+            const batch = db.batch();
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 const leaveDate = new Date(d);
                 leaveDate.setHours(0, 0, 0, 0);
 
-                await prisma.attendance.upsert({
-                    where: {
-                        userId_date: {
-                            userId: leaveRequest.userId,
-                            date: leaveDate,
-                        },
-                    },
-                    update: {
-                        status: leaveRequest.leaveType === "HALF_DAY" ? "HALF_DAY" : "ON_LEAVE",
-                        approvalStatus: "APPROVED",
-                        approvedBy: session.user.name,
-                        approvedAt: new Date(),
-                    },
-                    create: {
-                        userId: leaveRequest.userId,
-                        date: leaveDate,
-                        status: leaveRequest.leaveType === "HALF_DAY" ? "HALF_DAY" : "ON_LEAVE",
-                        approvalStatus: "APPROVED",
-                        approvedBy: session.user.name,
-                        approvedAt: new Date(),
-                    },
-                });
+                const dateStr = leaveDate.toISOString().split('T')[0];
+                const attendanceId = `${leaveData.userId}_${dateStr}`;
+                const attendanceRef = db.collection("attendance").doc(attendanceId);
+
+                batch.set(attendanceRef, {
+                    userId: leaveData.userId,
+                    date: leaveDate,
+                    status: leaveData.leaveType === "HALF_DAY" ? "HALF_DAY" : "ON_LEAVE",
+                    approvalStatus: "APPROVED",
+                    approvedBy: session.user.name,
+                    approvedAt: new Date(),
+                    updatedAt: new Date()
+                }, { merge: true });
             }
+            await batch.commit();
         }
 
-        return NextResponse.json(leaveRequest);
+        // Fetch user for response
+        let user = null;
+        const userDoc = await db.collection("users").doc(leaveData.userId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            user = { id: userDoc.id, name: userData?.name, email: userData?.email };
+        }
+
+        return NextResponse.json({
+            id: params.id,
+            ...leaveData,
+            ...updateData,
+            startDate: leaveData.startDate.toDate(),
+            endDate: leaveData.endDate.toDate(),
+            user
+        });
     } catch (error) {
         console.error("Error updating leave request:", error);
         return NextResponse.json(
@@ -100,30 +114,29 @@ export async function DELETE(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const leaveRequest = await prisma.leaveRequest.findUnique({
-            where: { id: params.id },
-        });
+        const leaveRef = db.collection("leaveRequests").doc(params.id);
+        const leaveDoc = await leaveRef.get();
 
-        if (!leaveRequest) {
+        if (!leaveDoc.exists) {
             return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
         }
 
+        const leaveData = leaveDoc.data()!;
+
         // Only owner or admin can delete
-        if (session.user.role !== "ADMIN" && leaveRequest.userId !== session.user.id) {
+        if ((session.user as any).role !== "ADMIN" && leaveData.userId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
         // Can only delete pending requests
-        if (leaveRequest.status !== "PENDING") {
+        if (leaveData.status !== "PENDING") {
             return NextResponse.json(
                 { error: "Can only delete pending leave requests" },
                 { status: 400 }
             );
         }
 
-        await prisma.leaveRequest.delete({
-            where: { id: params.id },
-        });
+        await leaveRef.delete();
 
         return NextResponse.json({ message: "Leave request deleted" });
     } catch (error) {

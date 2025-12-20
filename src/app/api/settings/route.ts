@@ -1,22 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
-        if (!session?.user || session.user.role !== "ADMIN") {
+        if (!session?.user || (session.user as any).role !== "ADMIN") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const setting = await prisma.systemSettings.findUnique({
-            where: { key: "office_ip" },
-        });
+        const settingsSnapshot = await db.collection("systemSettings")
+            .doc("office_ip")
+            .get();
 
-        return NextResponse.json({ office_ip: setting?.value || null });
+        return NextResponse.json({ office_ip: settingsSnapshot.exists ? settingsSnapshot.data()?.value : null });
     } catch (error) {
         return NextResponse.json({ error: "Failed to fetch settings" }, { status: 500 });
     }
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
-        if (!session?.user || session.user.role !== "ADMIN") {
+        if (!session?.user || (session.user as any).role !== "ADMIN") {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
@@ -42,14 +42,15 @@ export async function POST(request: NextRequest) {
             if (ipToSave === "::1") ipToSave = "127.0.0.1";
         }
 
-        await prisma.systemSettings.upsert({
-            where: { key: "office_ip" },
-            update: { value: ipToSave },
-            create: { key: "office_ip", value: ipToSave },
+        await db.collection("systemSettings").doc("office_ip").set({
+            key: "office_ip",
+            value: ipToSave,
+            updatedAt: new Date()
         });
 
         return NextResponse.json({ success: true, office_ip: ipToSave });
     } catch (error) {
+        console.error("Failed to save settings:", error);
         return NextResponse.json({ error: "Failed to save settings" }, { status: 500 });
     }
 }

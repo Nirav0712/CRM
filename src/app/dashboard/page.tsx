@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 
@@ -18,30 +18,54 @@ import StatusBadge from "@/components/leads/StatusBadge";
 
 export default async function DashboardPage() {
     const session = await getServerSession(authOptions);
-    const isAdmin = session?.user?.role === "ADMIN";
+    const userId = (session?.user as any)?.id;
+    const isAdmin = (session?.user as any)?.role === "ADMIN";
 
-    // Build where clause based on role
-    const where = isAdmin ? {} : { assignedToId: session?.user?.id };
+    // Build query based on role
+    let leadsQuery: any = db.collection("leads");
+    if (!isAdmin) {
+        leadsQuery = leadsQuery.where("assignedToId", "==", userId);
+    }
 
     // Get stats
-    const [totalLeads, customers, pendingLeads, totalValue, recentLeads] = await Promise.all([
-        prisma.lead.count({ where }),
-        prisma.lead.count({ where: { ...where, status: "CUSTOMER" } }),
-        prisma.lead.count({ where: { ...where, status: "PENDING" } }),
-        prisma.lead.aggregate({
-            where,
-            _sum: { leadValue: true },
-        }),
-        prisma.lead.findMany({
-            where,
-            include: {
-                source: true,
-                assignedTo: { select: { name: true } },
-            },
-            orderBy: { createdAt: "desc" },
-            take: 5,
-        }),
+    const [totalLeadsSnap, customersSnap, pendingLeadsSnap, allLeadsSnap, recentLeadsSnap] = await Promise.all([
+        leadsQuery.count().get(),
+        leadsQuery.where("status", "==", "CUSTOMER").count().get(),
+        leadsQuery.where("status", "==", "PENDING").count().get(),
+        leadsQuery.get(), // For total value sum (Firestore doesn't have aggregate sum yet)
+        leadsQuery.orderBy("createdAt", "desc").limit(5).get(),
     ]);
+
+    const totalLeads = totalLeadsSnap.data().count;
+    const customers = customersSnap.data().count;
+    const pendingLeads = pendingLeadsSnap.data().count;
+
+    // Calculate total value
+    let totalValueSum = 0;
+    allLeadsSnap.docs.forEach((doc: any) => {
+        const val = doc.data().leadValue;
+        if (val) totalValueSum += parseFloat(val);
+    });
+
+    const recentLeads = await Promise.all(recentLeadsSnap.docs.map(async (doc: any) => {
+        const data = doc.data();
+        let source = null;
+        if (data.sourceId) {
+            const sourceDoc = await db.collection("leadSources").doc(data.sourceId).get();
+            if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
+        }
+        let assignedTo = null;
+        if (data.assignedToId) {
+            const userDoc = await db.collection("users").doc(data.assignedToId).get();
+            if (userDoc.exists) assignedTo = { name: userDoc.data()?.name };
+        }
+        return {
+            id: doc.id,
+            ...data,
+            source,
+            assignedTo
+        };
+    }));
 
     const stats = [
         {
@@ -67,7 +91,7 @@ export default async function DashboardPage() {
         },
         {
             name: "Total Value",
-            value: formatCurrency(totalValue._sum.leadValue || 0),
+            value: formatCurrency(totalValueSum),
             icon: IndianRupee,
             color: "bg-purple-500",
             href: "/dashboard/leads",
@@ -118,7 +142,7 @@ export default async function DashboardPage() {
                 </div>
                 <div className="divide-y divide-gray-100">
                     {recentLeads.length > 0 ? (
-                        recentLeads.map((lead) => (
+                        recentLeads.map((lead: any) => (
                             <Link
                                 key={lead.id}
                                 href={`/dashboard/leads/${lead.id}`}

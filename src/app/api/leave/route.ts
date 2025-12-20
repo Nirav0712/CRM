@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 
@@ -17,26 +17,37 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const status = searchParams.get("status");
 
-        const where: any = {};
+        let query: any = db.collection("leaveRequests");
 
         // Staff can only see their own leave requests
-        if (session.user.role === "STAFF") {
-            where.userId = session.user.id;
+        if ((session.user as any).role === "STAFF") {
+            query = query.where("userId", "==", (session.user as any).id);
         }
 
         if (status) {
-            where.status = status;
+            query = query.where("status", "==", status);
         }
 
-        const leaveRequests = await prisma.leaveRequest.findMany({
-            where,
-            include: {
-                user: {
-                    select: { id: true, name: true, email: true },
-                },
-            },
-            orderBy: { createdAt: "desc" },
-        });
+        const snapshot = await query.orderBy("createdAt", "desc").get();
+        const leaveRequests = await Promise.all(snapshot.docs.map(async (doc: any) => {
+            const data = doc.data();
+            let user = null;
+            if (data.userId) {
+                const userDoc = await db.collection("users").doc(data.userId).get();
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    user = { id: userDoc.id, name: userData?.name, email: userData?.email };
+                }
+            }
+            return {
+                id: doc.id,
+                ...data,
+                startDate: data.startDate?.toDate(),
+                endDate: data.endDate?.toDate(),
+                createdAt: data.createdAt?.toDate(),
+                user
+            };
+        }));
 
         return NextResponse.json(leaveRequests);
     } catch (error) {
@@ -67,21 +78,21 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const leaveRequest = await prisma.leaveRequest.create({
-            data: {
-                userId: session.user.id,
-                startDate: new Date(startDate),
-                endDate: new Date(endDate),
-                leaveType,
-                reason,
-                status: "PENDING",
-            },
-            include: {
-                user: { select: { id: true, name: true, email: true } },
-            },
-        });
+        const now = new Date();
+        const leaveData = {
+            userId: (session.user as any).id,
+            startDate: new Date(startDate),
+            endDate: new Date(endDate),
+            leaveType,
+            reason,
+            status: "PENDING",
+            createdAt: now,
+            updatedAt: now,
+        };
 
-        return NextResponse.json(leaveRequest, { status: 201 });
+        const docRef = await db.collection("leaveRequests").add(leaveData);
+
+        return NextResponse.json({ id: docRef.id, ...leaveData }, { status: 201 });
     } catch (error) {
         console.error("Error creating leave request:", error);
         return NextResponse.json(

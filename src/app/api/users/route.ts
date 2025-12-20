@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 export const dynamic = 'force-dynamic';
 import bcrypt from "bcryptjs";
@@ -15,15 +15,16 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const users = await prisma.user.findMany({
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-                createdAt: true,
-            },
-            orderBy: { name: "asc" },
+        const snapshot = await db.collection("users").orderBy("name", "asc").get();
+        const users = snapshot.docs.map((doc: any) => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                name: data.name,
+                email: data.email,
+                role: data.role,
+                createdAt: data.createdAt?.toDate(),
+            };
         });
 
         return NextResponse.json(users);
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        if (session.user.role !== "ADMIN") {
+        if ((session.user as any).role !== "ADMIN") {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
@@ -59,11 +60,12 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        const existing = await prisma.user.findUnique({
-            where: { email },
-        });
+        const existingSnapshot = await db.collection("users")
+            .where("email", "==", email)
+            .limit(1)
+            .get();
 
-        if (existing) {
+        if (!existingSnapshot.empty) {
             return NextResponse.json(
                 { error: "User with this email already exists" },
                 { status: 400 }
@@ -72,23 +74,27 @@ export async function POST(request: NextRequest) {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        const user = await prisma.user.create({
-            data: {
-                email,
-                password: hashedPassword,
-                name,
-                role,
-            },
-            select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-                createdAt: true,
-            },
-        });
+        const now = new Date();
+        const userData = {
+            email,
+            password: hashedPassword,
+            name,
+            role,
+            createdAt: now,
+            updatedAt: now,
+        };
 
-        return NextResponse.json(user, { status: 201 });
+        const docRef = await db.collection("users").add(userData);
+
+        const result = {
+            id: docRef.id,
+            name,
+            email,
+            role,
+            createdAt: now,
+        };
+
+        return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error("Error creating user:", error);
         return NextResponse.json(

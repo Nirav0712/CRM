@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 // POST add note to task (admin can add notes/responses)
 export async function POST(
@@ -17,16 +17,17 @@ export async function POST(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const task = await prisma.task.findUnique({
-            where: { id: params.id },
-        });
+        const taskRef = db.collection("tasks").doc(params.id);
+        const taskDoc = await taskRef.get();
 
-        if (!task) {
+        if (!taskDoc.exists) {
             return NextResponse.json({ error: "Task not found" }, { status: 404 });
         }
 
+        const taskData = taskDoc.data()!;
+
         // Staff can only add notes to their own tasks, admin can add to any
-        if (session.user.role === "STAFF" && task.userId !== session.user.id) {
+        if ((session.user as any).role === "STAFF" && taskData.userId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
@@ -37,18 +38,24 @@ export async function POST(
             return NextResponse.json({ error: "Content is required" }, { status: 400 });
         }
 
-        const note = await prisma.taskNote.create({
-            data: {
-                taskId: params.id,
-                userId: session.user.id,
-                content,
-            },
-            include: {
-                user: { select: { id: true, name: true } },
-            },
-        });
+        const now = new Date();
+        const noteData = {
+            taskId: params.id,
+            userId: (session.user as any).id,
+            content,
+            createdAt: now,
+            updatedAt: now,
+        };
 
-        return NextResponse.json(note, { status: 201 });
+        const docRef = await db.collection("taskNotes").add(noteData);
+
+        const result = {
+            id: docRef.id,
+            ...noteData,
+            user: { id: (session.user as any).id, name: session.user.name }
+        };
+
+        return NextResponse.json(result, { status: 201 });
     } catch (error) {
         console.error("Error adding note:", error);
         return NextResponse.json(

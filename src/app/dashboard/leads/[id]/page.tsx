@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 import { notFound, redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
@@ -34,24 +34,69 @@ export default async function LeadDetailPage({ params }: PageProps) {
         redirect("/login");
     }
 
-    const lead = await prisma.lead.findUnique({
-        where: { id: params.id },
-        include: {
-            source: true,
-            assignedTo: { select: { id: true, name: true, email: true } },
-            tags: { include: { tag: true } },
-            statusHistory: { orderBy: { changedAt: "desc" } },
-        },
-    });
+    const leadDoc = await db.collection("leads").doc(params.id).get();
 
-    if (!lead) {
+    if (!leadDoc.exists) {
         notFound();
     }
 
+    const leadData = leadDoc.data()!;
+
     // Staff can only view their assigned leads
-    if (session.user.role === "STAFF" && lead.assignedToId !== session.user.id) {
+    if ((session.user as any).role === "STAFF" && leadData.assignedToId !== (session.user as any).id) {
         redirect("/dashboard/leads");
     }
+
+    // Fetch related data
+    let source = null;
+    if (leadData.sourceId) {
+        const sourceDoc = await db.collection("leadSources").doc(leadData.sourceId).get();
+        if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
+    }
+
+    let assignedTo = null;
+    if (leadData.assignedToId) {
+        const userDoc = await db.collection("users").doc(leadData.assignedToId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            assignedTo = { id: userDoc.id, name: userData?.name, email: userData?.email };
+        }
+    }
+
+    const tagsSnapshot = await db.collection("tagOnLead")
+        .where("leadId", "==", params.id)
+        .get();
+
+    const tags = await Promise.all(tagsSnapshot.docs.map(async (doc: any) => {
+        const tol = doc.data();
+        const tagDoc = await db.collection("tags").doc(tol.tagId).get();
+        return {
+            tagId: tol.tagId,
+            tag: tagDoc.exists ? { id: tagDoc.id, ...tagDoc.data() } : null
+        };
+    }));
+
+    const statusHistorySnapshot = await db.collection("statusHistory")
+        .where("leadId", "==", params.id)
+        .orderBy("changedAt", "desc")
+        .get();
+
+    const statusHistory = statusHistorySnapshot.docs.map((doc: any) => ({
+        id: doc.id,
+        ...doc.data(),
+        changedAt: doc.data().changedAt?.toDate()
+    }));
+
+    const lead = {
+        id: leadDoc.id,
+        ...leadData,
+        createdAt: leadData.createdAt?.toDate(),
+        updatedAt: leadData.updatedAt?.toDate(),
+        source,
+        assignedTo,
+        tags,
+        statusHistory
+    } as any;
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -185,11 +230,11 @@ export default async function LeadDetailPage({ params }: PageProps) {
                                 Status History
                             </h3>
                             <div className="space-y-4">
-                                {lead.statusHistory.map((history, index) => (
+                                {lead.statusHistory.map((history: any, index: number) => (
                                     <div key={history.id} className="flex items-start gap-4">
                                         <div className="relative">
                                             <div className="w-3 h-3 rounded-full bg-primary-500 ring-4 ring-primary-100" />
-                                            {index !== lead.statusHistory!.length - 1 && (
+                                            {index !== lead.statusHistory.length - 1 && (
                                                 <div className="absolute top-3 left-1.5 w-0.5 h-full -translate-x-1/2 bg-gray-200" />
                                             )}
                                         </div>
@@ -258,7 +303,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
                         <div className="card p-6">
                             <p className="text-sm text-gray-500 mb-3">Tags</p>
                             <div className="flex flex-wrap gap-2">
-                                {lead.tags.map((t) => (
+                                {lead.tags.map((t: any) => (
                                     <span
                                         key={t.tagId}
                                         className="badge"

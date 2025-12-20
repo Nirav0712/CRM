@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import LeadForm from "@/components/leads/LeadForm";
@@ -20,23 +20,55 @@ export default async function EditLeadPage({ params }: PageProps) {
         redirect("/login");
     }
 
-    const lead = await prisma.lead.findUnique({
-        where: { id: params.id },
-        include: {
-            source: true,
-            assignedTo: { select: { id: true, name: true, email: true } },
-            tags: { include: { tag: true } },
-        },
-    });
+    const leadDoc = await db.collection("leads").doc(params.id).get();
 
-    if (!lead) {
+    if (!leadDoc.exists) {
         notFound();
     }
 
+    const leadData = leadDoc.data()!;
+
     // Staff can only edit their assigned leads
-    if (session.user.role === "STAFF" && lead.assignedToId !== session.user.id) {
+    if ((session.user as any).role === "STAFF" && leadData.assignedToId !== (session.user as any).id) {
         redirect("/dashboard/leads");
     }
+
+    // Fetch related data for form
+    let source = null;
+    if (leadData.sourceId) {
+        const sourceDoc = await db.collection("leadSources").doc(leadData.sourceId).get();
+        if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
+    }
+
+    let assignedTo = null;
+    if (leadData.assignedToId) {
+        const userDoc = await db.collection("users").doc(leadData.assignedToId).get();
+        if (userDoc.exists) {
+            const userData = userDoc.data();
+            assignedTo = { id: userDoc.id, name: userData?.name, email: userData?.email };
+        }
+    }
+
+    const tagsSnapshot = await db.collection("tagOnLead")
+        .where("leadId", "==", params.id)
+        .get();
+
+    const tags = await Promise.all(tagsSnapshot.docs.map(async (doc: any) => {
+        const tol = doc.data();
+        const tagDoc = await db.collection("tags").doc(tol.tagId).get();
+        return {
+            tagId: tol.tagId,
+            tag: tagDoc.exists ? { id: tagDoc.id, ...tagDoc.data() } : null
+        };
+    }));
+
+    const lead = {
+        id: leadDoc.id,
+        ...leadData,
+        source,
+        assignedTo,
+        tags
+    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -49,7 +81,7 @@ export default async function EditLeadPage({ params }: PageProps) {
                 </Link>
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Edit Lead</h1>
-                    <p className="text-gray-500">{lead.name}</p>
+                    <p className="text-gray-500">{(lead as any).name}</p>
                 </div>
             </div>
 

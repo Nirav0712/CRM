@@ -1,6 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { prisma } from "./prisma";
+import { db } from "./firebaseAdmin";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -19,14 +19,16 @@ export const authOptions: NextAuthOptions = {
                         throw new Error("Invalid credentials");
                     }
 
-                    const user = await prisma.user.findUnique({
-                        where: { email: credentials.email },
-                    });
+                    const usersRef = db.collection("users");
+                    const snapshot = await usersRef.where("email", "==", credentials.email).limit(1).get();
 
-                    if (!user) {
+                    if (snapshot.empty) {
                         console.warn("User not found:", credentials.email);
                         throw new Error("User not found");
                     }
+
+                    const userDoc = snapshot.docs[0];
+                    const user = userDoc.data();
 
                     const isPasswordValid = await bcrypt.compare(
                         credentials.password,
@@ -40,7 +42,7 @@ export const authOptions: NextAuthOptions = {
 
                     console.log("Authorization successful for:", credentials.email);
                     return {
-                        id: user.id,
+                        id: userDoc.id,
                         email: user.email,
                         name: user.name,
                         role: user.role as "ADMIN" | "STAFF",

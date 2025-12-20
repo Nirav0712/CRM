@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { db } from "@/lib/firebaseAdmin";
 
 // DELETE user (admin only)
 export async function DELETE(
@@ -17,12 +17,12 @@ export async function DELETE(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        if (session.user.role !== "ADMIN") {
+        if ((session.user as any).role !== "ADMIN") {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
         // Prevent deleting yourself
-        if (params.id === session.user.id) {
+        if (params.id === (session.user as any).id) {
             return NextResponse.json(
                 { error: "Cannot delete your own account" },
                 { status: 400 }
@@ -30,20 +30,19 @@ export async function DELETE(
         }
 
         // Check if user has leads assigned
-        const leadsCount = await prisma.lead.count({
-            where: { assignedToId: params.id },
-        });
+        const leadsSnapshot = await db.collection("leads")
+            .where("assignedToId", "==", params.id)
+            .limit(1)
+            .get();
 
-        if (leadsCount > 0) {
+        if (!leadsSnapshot.empty) {
             return NextResponse.json(
-                { error: `Cannot delete user with ${leadsCount} assigned leads. Reassign leads first.` },
+                { error: `Cannot delete user with assigned leads. Reassign leads first.` },
                 { status: 400 }
             );
         }
 
-        await prisma.user.delete({
-            where: { id: params.id },
-        });
+        await db.collection("users").doc(params.id).delete();
 
         return NextResponse.json({ message: "User deleted successfully" });
     } catch (error) {
