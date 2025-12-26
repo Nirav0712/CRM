@@ -6,7 +6,7 @@ import { db } from "@/lib/firebaseAdmin";
 export const dynamic = 'force-dynamic';
 
 // Service types for clients
-export const SERVICE_TYPES = [
+const SERVICE_TYPES = [
     "Web Development",
     "App Development",
     "UI/UX Design",
