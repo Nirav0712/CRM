@@ -37,6 +37,7 @@ const SERVICE_TYPES = [
     "Digital Marketing",
     "SEO Services",
     "Content Writing",
+    "Social Media Management",
     "Consultation",
     "Maintenance & Support",
     "Other"
@@ -49,6 +50,7 @@ const SERVICE_COLORS: Record<string, string> = {
     "Digital Marketing": "bg-orange-100 text-orange-800",
     "SEO Services": "bg-green-100 text-green-800",
     "Content Writing": "bg-yellow-100 text-yellow-800",
+    "Social Media Management": "bg-cyan-100 text-cyan-800",
     "Consultation": "bg-indigo-100 text-indigo-800",
     "Maintenance & Support": "bg-teal-100 text-teal-800",
     "Other": "bg-gray-100 text-gray-800",
@@ -73,6 +75,8 @@ export default function ClientsPage() {
         notes: "",
     });
 
+    const [customServiceType, setCustomServiceType] = useState("");
+
     const isAdmin = (session?.user as any)?.role === "ADMIN";
 
     useEffect(() => {
@@ -94,14 +98,24 @@ export default function ClientsPage() {
     };
 
     const handleEditClick = (client: Client) => {
+        // Check if the service type is a custom one (not in the predefined list)
+        const isCustomService = !SERVICE_TYPES.includes(client.serviceType);
+
         setFormData({
             name: client.name,
             email: client.email || "",
             phone: client.phone || "",
-            serviceType: client.serviceType,
+            serviceType: isCustomService ? "Other" : client.serviceType,
             address: client.address || "",
             notes: client.notes || "",
         });
+
+        if (isCustomService) {
+            setCustomServiceType(client.serviceType);
+        } else {
+            setCustomServiceType("");
+        }
+
         setEditingId(client.id);
         setShowForm(true);
     };
@@ -117,6 +131,7 @@ export default function ClientsPage() {
             address: "",
             notes: "",
         });
+        setCustomServiceType("");
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -127,10 +142,15 @@ export default function ClientsPage() {
             const url = editingId ? `/api/clients/${editingId}` : "/api/clients";
             const method = editingId ? "PUT" : "POST";
 
+            // Use custom service type if "Other" is selected and custom type is provided
+            const finalServiceType = formData.serviceType === "Other" && customServiceType.trim()
+                ? customServiceType.trim()
+                : formData.serviceType;
+
             const res = await fetch(url, {
                 method: method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+                body: JSON.stringify({ ...formData, serviceType: finalServiceType }),
             });
 
             if (res.ok) {
@@ -282,7 +302,12 @@ export default function ClientsPage() {
                                 <label className="label">Service Type *</label>
                                 <select
                                     value={formData.serviceType}
-                                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, serviceType: e.target.value });
+                                        if (e.target.value !== "Other") {
+                                            setCustomServiceType("");
+                                        }
+                                    }}
                                     className="input"
                                     required
                                 >
@@ -291,6 +316,19 @@ export default function ClientsPage() {
                                     ))}
                                 </select>
                             </div>
+                            {formData.serviceType === "Other" && (
+                                <div className="sm:col-span-2">
+                                    <label className="label">Custom Service Type *</label>
+                                    <input
+                                        type="text"
+                                        value={customServiceType}
+                                        onChange={(e) => setCustomServiceType(e.target.value)}
+                                        className="input"
+                                        placeholder="Enter custom service type"
+                                        required
+                                    />
+                                </div>
+                            )}
                             <div>
                                 <label className="label">Email</label>
                                 <input

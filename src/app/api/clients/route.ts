@@ -13,6 +13,7 @@ export const SERVICE_TYPES = [
     "Digital Marketing",
     "SEO Services",
     "Content Writing",
+    "Social Media Management",
     "Consultation",
     "Maintenance & Support",
     "Other"
