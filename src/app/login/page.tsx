@@ -108,14 +108,14 @@ export default function LoginPage() {
                         </button>
                     </form>
 
-                    <div className="mt-6 pt-6 border-t border-gray-200">
+                    {/* <div className="mt-6 pt-6 border-t border-gray-200">
                         <p className="text-sm text-center text-gray-500">
                             Default admin credentials:
                         </p>
                         <p className="text-sm text-center text-gray-700 font-medium mt-1">
                             admin@company.com / admin123
                         </p>
-                    </div>
+                    </div> */}
                 </div>
             </div>
         </div>
