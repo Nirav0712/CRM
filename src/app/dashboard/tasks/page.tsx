@@ -17,6 +17,7 @@ import {
     Timer,
     Pencil,
     X,
+    Building2,
 } from "lucide-react";
 
 interface Task {
@@ -26,9 +27,17 @@ interface Task {
     date: string;
     hoursWorked: number;
     status: string;
+    clientId?: string;
+    client?: { id: string; name: string; serviceType: string } | null;
     user: { id: string; name: string; email: string };
     notes: TaskNote[];
     createdAt: string;
+}
+
+interface Client {
+    id: string;
+    name: string;
+    serviceType: string;
 }
 
 interface TaskNote {
@@ -90,18 +99,40 @@ export default function TasksPage() {
         date: new Date().toISOString().split("T")[0],
         hoursWorked: "",
         status: "IN_PROGRESS",
+        clientId: "",
     });
 
-    const isAdmin = session?.user?.role === "ADMIN";
+    const [clients, setClients] = useState<Client[]>([]);
+    const [filterClientId, setFilterClientId] = useState("");
+
+    const isAdmin = (session?.user as any)?.role === "ADMIN";
+
+    useEffect(() => {
+        fetchClients();
+    }, []);
 
     useEffect(() => {
         fetchTasks();
-    }, [selectedMonth]);
+    }, [selectedMonth, filterClientId]);
+
+    const fetchClients = async () => {
+        try {
+            const res = await fetch("/api/clients");
+            const data = await res.json();
+            setClients(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error("Error fetching clients:", error);
+        }
+    };
 
     const fetchTasks = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/tasks?month=${selectedMonth}`);
+            let url = `/api/tasks?month=${selectedMonth}`;
+            if (filterClientId) {
+                url += `&clientId=${filterClientId}`;
+            }
+            const res = await fetch(url);
             const data = await res.json();
             setTasks(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -119,6 +150,7 @@ export default function TasksPage() {
             hoursWorked: task.hoursWorked.toString(),
             date: new Date(task.date).toISOString().split('T')[0],
             status: task.status,
+            clientId: task.clientId || "",
         });
         setEditingId(task.id);
         setShowForm(true);
@@ -133,6 +165,7 @@ export default function TasksPage() {
             date: new Date().toISOString().split("T")[0],
             hoursWorked: "",
             status: "IN_PROGRESS",
+            clientId: "",
         });
     };
 
@@ -329,6 +362,22 @@ export default function TasksPage() {
                                     placeholder="Brief description..."
                                 />
                             </div>
+                            <div>
+                                <label className="label">Client *</label>
+                                <select
+                                    value={formData.clientId}
+                                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                                    className="input"
+                                    required
+                                >
+                                    <option value="">Select a Client</option>
+                                    {clients.map(client => (
+                                        <option key={client.id} value={client.id}>
+                                            {client.name} ({client.serviceType})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
                         <div className="flex gap-3">
                             <button type="submit" className="btn-primary" disabled={processing}>
@@ -349,14 +398,28 @@ export default function TasksPage() {
 
             {/* Tasks List */}
             <div className="card overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b border-gray-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border-b border-gray-200 gap-2">
                     <h3 className="font-semibold text-gray-900">Task Log</h3>
-                    <input
-                        type="month"
-                        value={selectedMonth}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        className="input w-auto"
-                    />
+                    <div className="flex gap-2">
+                        <select
+                            value={filterClientId}
+                            onChange={(e) => setFilterClientId(e.target.value)}
+                            className="input w-auto text-sm"
+                        >
+                            <option value="">All Clients</option>
+                            {clients.map(client => (
+                                <option key={client.id} value={client.id}>
+                                    {client.name}
+                                </option>
+                            ))}
+                        </select>
+                        <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="input w-auto"
+                        />
+                    </div>
                 </div>
                 {loading ? (
                     <div className="p-8 text-center">
@@ -381,6 +444,12 @@ export default function TasksPage() {
                                             <span className="badge bg-primary-100 text-primary-800">
                                                 {task.hoursWorked}h
                                             </span>
+                                            {task.client && (
+                                                <span className="badge bg-indigo-100 text-indigo-800 flex items-center gap-1">
+                                                    <Building2 className="w-3 h-3" />
+                                                    {task.client.name} • {task.client.serviceType}
+                                                </span>
+                                            )}
                                         </div>
 
                                         {task.description && (
@@ -460,31 +529,33 @@ export default function TasksPage() {
                                     </div>
 
                                     {/* Add Note Form Modal/Inline */}
-                                    {selectedTaskForNote?.id === task.id && (
-                                        <div className="basis-full mt-3 sm:mt-0 pt-3 border-t sm:border-0 border-gray-100 w-full sm:basis-auto">
-                                            <div className="flex gap-2">
-                                                <input
-                                                    type="text"
-                                                    value={noteContent}
-                                                    onChange={(e) => setNoteContent(e.target.value)}
-                                                    className="input flex-1"
-                                                    placeholder={isAdmin ? "Add feedback..." : "Add a note..."}
-                                                    autoFocus
-                                                />
-                                                <button
-                                                    onClick={() => handleAddNote(task.id)}
-                                                    className="btn-primary py-2"
-                                                    disabled={addingNote || !noteContent.trim()}
-                                                >
-                                                    {addingNote ? (
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        <Send className="w-4 h-4" />
-                                                    )}
-                                                </button>
+                                    {
+                                        selectedTaskForNote?.id === task.id && (
+                                            <div className="basis-full mt-3 sm:mt-0 pt-3 border-t sm:border-0 border-gray-100 w-full sm:basis-auto">
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={noteContent}
+                                                        onChange={(e) => setNoteContent(e.target.value)}
+                                                        className="input flex-1"
+                                                        placeholder={isAdmin ? "Add feedback..." : "Add a note..."}
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        onClick={() => handleAddNote(task.id)}
+                                                        className="btn-primary py-2"
+                                                        disabled={addingNote || !noteContent.trim()}
+                                                    >
+                                                        {addingNote ? (
+                                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                                        ) : (
+                                                            <Send className="w-4 h-4" />
+                                                        )}
+                                                    </button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
+                                        )
+                                    }
                                 </div>
                             );
                         })}
@@ -495,6 +566,6 @@ export default function TasksPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

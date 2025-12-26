@@ -43,7 +43,6 @@ export async function GET(
         // Fetch notes
         const notesSnapshot = await db.collection("taskNotes")
             .where("taskId", "==", params.id)
-            .orderBy("createdAt", "desc")
             .get();
 
         const notes = await Promise.all(notesSnapshot.docs.map(async (noteDoc: any) => {
@@ -62,6 +61,13 @@ export async function GET(
                 user: noteUser
             };
         }));
+
+        // Sort notes in-memory
+        notes.sort((a, b) => {
+            const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+            const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+            return dateB - dateA;
+        });
 
         return NextResponse.json({
             id: taskDoc.id,

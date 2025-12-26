@@ -17,6 +17,7 @@ import {
     ClipboardList,
     Clock,
     Settings,
+    Building2,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -25,6 +26,7 @@ const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Leads", href: "/dashboard/leads", icon: Users },
     { name: "Add Lead", href: "/dashboard/leads/new", icon: UserPlus },
+    { name: "Clients", href: "/dashboard/clients", icon: Building2 },
     { name: "Attendance", href: "/dashboard/attendance", icon: Calendar },
     { name: "Tasks", href: "/dashboard/tasks", icon: ClipboardList },
     { name: "Sources", href: "/dashboard/sources", icon: Layers },

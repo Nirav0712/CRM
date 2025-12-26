@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get("userId");
+        const clientId = searchParams.get("clientId");
         const date = searchParams.get("date");
         const month = searchParams.get("month"); // Format: YYYY-MM
 
@@ -28,26 +29,8 @@ export async function GET(request: NextRequest) {
             query = query.where("userId", "==", userId);
         }
 
-        // Filter by specific date
-        if (date) {
-            const taskDate = new Date(date);
-            taskDate.setHours(0, 0, 0, 0);
-            const nextDay = new Date(taskDate);
-            nextDay.setDate(nextDay.getDate() + 1);
-
-            query = query.where("date", ">=", taskDate).where("date", "<", nextDay);
-        }
-
-        // Filter by month
-        if (month) {
-            const [year, monthNum] = month.split("-").map(Number);
-            const startDate = new Date(year, monthNum - 1, 1);
-            const endDate = new Date(year, monthNum, 0, 23, 59, 59);
-            query = query.where("date", ">=", startDate).where("date", "<=", endDate);
-        }
-
-        const snapshot = await query.orderBy("date", "desc").get();
-        const tasks = await Promise.all(snapshot.docs.map(async (doc: any) => {
+        const snapshot = await query.get();
+        let tasks = await Promise.all(snapshot.docs.map(async (doc: any) => {
             const data = doc.data();
 
             // Fetch user info
@@ -60,10 +43,19 @@ export async function GET(request: NextRequest) {
                 }
             }
 
+            // Fetch client info if clientId exists
+            let client = null;
+            if (data.clientId) {
+                const clientDoc = await db.collection("clients").doc(data.clientId).get();
+                if (clientDoc.exists) {
+                    const clientData = clientDoc.data();
+                    client = { id: clientDoc.id, name: clientData?.name, serviceType: clientData?.serviceType };
+                }
+            }
+
             // Fetch notes
             const notesSnapshot = await db.collection("taskNotes")
                 .where("taskId", "==", doc.id)
-                .orderBy("createdAt", "desc")
                 .get();
 
             const notes = await Promise.all(notesSnapshot.docs.map(async (noteDoc: any) => {
@@ -83,21 +75,66 @@ export async function GET(request: NextRequest) {
                 };
             }));
 
+            // Sort notes in-memory
+            notes.sort((a, b) => {
+                const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+                const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+                return dateB - dateA;
+            });
+
             return {
                 id: doc.id,
                 ...data,
                 date: data.date?.toDate(),
                 createdAt: data.createdAt?.toDate(),
                 user,
+                client,
                 notes
             };
         }));
 
+        // Filter by clientId (in-memory)
+        if (clientId) {
+            tasks = tasks.filter(t => t.clientId === clientId);
+        }
+
+        // Filter by specific date (in-memory)
+        if (date) {
+            const filterDate = new Date(date);
+            filterDate.setHours(0, 0, 0, 0);
+            const nextDay = new Date(filterDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+
+            tasks = tasks.filter(t => {
+                const tDate = t.date instanceof Date ? t.date : null;
+                return tDate && tDate >= filterDate && tDate < nextDay;
+            });
+        }
+
+        // Filter by month (in-memory)
+        if (month) {
+            const [year, monthNum] = month.split("-").map(Number);
+            const startDate = new Date(year, monthNum - 1, 1);
+            const endDate = new Date(year, monthNum, 0, 23, 59, 59);
+
+            tasks = tasks.filter(t => {
+                const tDate = t.date instanceof Date ? t.date : null;
+                return tDate && tDate >= startDate && tDate <= endDate;
+            });
+        }
+
+        // Sort in-memory to avoid index requirements
+        tasks.sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date.getTime() : 0;
+            const dateB = b.date instanceof Date ? b.date.getTime() : 0;
+            return dateB - dateA;
+        });
+
         return NextResponse.json(tasks);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error fetching tasks:", error);
         return NextResponse.json(
-            { error: "Failed to fetch tasks" },
+            { error: "Failed to fetch tasks", details: error.message },
             { status: 500 }
         );
     }
@@ -113,7 +150,7 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json();
-        const { title, description, date, hoursWorked, status = "IN_PROGRESS" } = body;
+        const { title, description, date, hoursWorked, clientId, status = "IN_PROGRESS" } = body;
 
         if (!title || !date || hoursWorked === undefined) {
             return NextResponse.json(
@@ -123,10 +160,10 @@ export async function POST(request: NextRequest) {
         }
 
         const now = new Date();
-        const taskData = {
+        const taskData: any = {
             userId: (session.user as any).id,
             title,
-            description,
+            description: description || "",
             date: new Date(date),
             hoursWorked: parseFloat(hoursWorked),
             status,
@@ -134,12 +171,28 @@ export async function POST(request: NextRequest) {
             updatedAt: now,
         };
 
+        // Add clientId if provided
+        if (clientId) {
+            taskData.clientId = clientId;
+        }
+
         const docRef = await db.collection("tasks").add(taskData);
+
+        // Fetch client info for response
+        let client = null;
+        if (clientId) {
+            const clientDoc = await db.collection("clients").doc(clientId).get();
+            if (clientDoc.exists) {
+                const clientData = clientDoc.data();
+                client = { id: clientDoc.id, name: clientData?.name, serviceType: clientData?.serviceType };
+            }
+        }
 
         const result = {
             id: docRef.id,
             ...taskData,
             user: { id: (session.user as any).id, name: session.user.name, email: session.user.email },
+            client,
             notes: []
         };
 
