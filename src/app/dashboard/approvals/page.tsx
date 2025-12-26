@@ -5,14 +5,13 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import {
     Check,
     X,
     Loader2,
     Calendar,
     Clock,
-    User,
 } from "lucide-react";
 
 interface Attendance {
@@ -46,12 +45,6 @@ const STATUS_COLORS: Record<string, string> = {
     PENDING: "bg-gray-100 text-gray-800",
 };
 
-const APPROVAL_COLORS: Record<string, string> = {
-    PENDING: "bg-yellow-100 text-yellow-800",
-    APPROVED: "bg-green-100 text-green-800",
-    REJECTED: "bg-red-100 text-red-800",
-};
-
 export default function ApprovalsPage() {
     const { data: session } = useSession();
     const [attendanceRequests, setAttendanceRequests] = useState<Attendance[]>([]);
@@ -76,8 +69,12 @@ export default function ApprovalsPage() {
                 fetch("/api/attendance?status=PENDING"),
                 fetch("/api/leave?status=PENDING"),
             ]);
-            setAttendanceRequests(await attendanceRes.json());
-            setLeaveRequests(await leaveRes.json());
+            if (attendanceRes.ok) {
+                setAttendanceRequests(await attendanceRes.json());
+            }
+            if (leaveRes.ok) {
+                setLeaveRequests(await leaveRes.json());
+            }
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {

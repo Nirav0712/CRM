@@ -123,12 +123,13 @@ export default function Sidebar() {
             >
                 <div className="flex flex-col h-full">
                     {/* Logo */}
-                    <div className="flex items-center gap-3 h-16 px-6 border-b border-gray-200">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
-                            <span className="text-white font-bold text-sm">CRM</span>
-                        </div>
-                        <span className="font-semibold text-gray-900">Lead Manager</span>
-                    </div>
+                    <Link href="/dashboard" className="flex items-center h-16 px-6 border-b border-gray-200 hover:opacity-90 transition-opacity">
+                        <img
+                            src="/logo.png"
+                            alt="Phoenix CRM"
+                            className="h-10 w-auto object-contain"
+                        />
+                    </Link>
 
                     {/* Navigation */}
                     <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">

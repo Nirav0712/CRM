@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
             query = query.where("status", "==", status);
         }
 
-        const snapshot = await query.orderBy("createdAt", "desc").get();
+        const snapshot = await query.get();
         const leaveRequests = await Promise.all(snapshot.docs.map(async (doc: any) => {
             const data = doc.data();
             let user = null;
@@ -48,6 +48,13 @@ export async function GET(request: NextRequest) {
                 user
             };
         }));
+
+        // Sort in-memory to avoid index requirements
+        leaveRequests.sort((a, b) => {
+            const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+            const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+            return dateB - dateA;
+        });
 
         return NextResponse.json(leaveRequests);
     } catch (error) {

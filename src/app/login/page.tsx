@@ -42,8 +42,12 @@ export default function LoginPage() {
             <div className="w-full max-w-md">
                 {/* Logo */}
                 <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-500/30 mb-4">
-                        <span className="text-white font-bold text-2xl">CRM</span>
+                    <div className="inline-flex items-center justify-center mb-6">
+                        <img
+                            src="/logo.png"
+                            alt="Phoenix CRM"
+                            className="h-16 w-auto object-contain"
+                        />
                     </div>
                     <h1 className="text-2xl font-bold text-gray-900">Welcome Back</h1>
                     <p className="text-gray-500 mt-1">Sign in to your account</p>

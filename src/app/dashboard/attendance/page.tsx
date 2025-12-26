@@ -212,7 +212,7 @@ export default function AttendancePage() {
     // Filter attendance to find record where date matches today and user matches session user
     const todayRecord = attendance.find(a => {
         const recordDateStr = getLocalDateStr(new Date(a.date));
-        return recordDateStr === todayStr && a.user.id === session?.user?.id;
+        return recordDateStr === todayStr && a.user?.id === session?.user?.id;
     });
 
     return (

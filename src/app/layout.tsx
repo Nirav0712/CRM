@@ -3,8 +3,8 @@ import "./globals.css";
 import AuthProvider from "@/components/auth/AuthProvider";
 
 export const metadata: Metadata = {
-    title: "CRM - Lead Management System",
-    description: "A professional CRM for managing leads and customers",
+    title: "Phoenix CRM - Lead Management System",
+    description: "A professional Phoenix CRM for managing leads and customers",
 };
 
 export default function RootLayout({
