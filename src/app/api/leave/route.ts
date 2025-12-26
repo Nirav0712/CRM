@@ -57,10 +57,10 @@ export async function GET(request: NextRequest) {
         });
 
         return NextResponse.json(leaveRequests);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error fetching leave requests:", error);
         return NextResponse.json(
-            { error: "Failed to fetch leave requests" },
+            { error: "Failed to fetch leave requests", details: error.message },
             { status: 500 }
         );
     }
@@ -100,10 +100,10 @@ export async function POST(request: NextRequest) {
         const docRef = await db.collection("leaveRequests").add(leaveData);
 
         return NextResponse.json({ id: docRef.id, ...leaveData }, { status: 201 });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error creating leave request:", error);
         return NextResponse.json(
-            { error: "Failed to create leave request" },
+            { error: "Failed to create leave request", details: error.message },
             { status: 500 }
         );
     }

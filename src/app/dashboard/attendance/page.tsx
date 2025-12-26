@@ -68,9 +68,11 @@ export default function AttendancePage() {
     const { data: session } = useSession();
     const isAdmin = session?.user?.role === "ADMIN";
     const [attendance, setAttendance] = useState<Attendance[]>([]);
+    const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [showLeaveForm, setShowLeaveForm] = useState(false);
+    const [activeTab, setActiveTab] = useState<"attendance" | "leaves">("attendance");
     const [selectedMonth, setSelectedMonth] = useState(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -92,12 +94,19 @@ export default function AttendancePage() {
     const fetchAttendance = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/attendance?month=${selectedMonth}`);
-            const data = await res.json();
-            setAttendance(Array.isArray(data) ? data : []);
+            const [attRes, leaveRes] = await Promise.all([
+                fetch(`/api/attendance?month=${selectedMonth}`),
+                fetch("/api/leave")
+            ]);
+            const attData = await attRes.json();
+            const leaveData = await leaveRes.json();
+
+            setAttendance(Array.isArray(attData) ? attData : []);
+            setLeaveRequests(Array.isArray(leaveData) ? leaveData : []);
         } catch (error) {
-            console.error("Error fetching attendance:", error);
+            console.error("Error fetching data:", error);
             setAttendance([]);
+            setLeaveRequests([]);
         } finally {
             setLoading(false);
         }
@@ -332,76 +341,143 @@ export default function AttendancePage() {
                 </div>
             )}
 
-            {/* Attendance History Table */}
+            {/* Attendance & Leave History Tabs */}
             <div className="card overflow-hidden">
-                <div className="p-6 border-b border-gray-100">
-                    <h3 className="font-semibold text-gray-900">
-                        {isAdmin ? "All Staff Attendance Records" : "Attendance History"}
-                    </h3>
-                </div>
+                {!isAdmin && (
+                    <div className="flex border-b border-gray-100">
+                        <button
+                            onClick={() => setActiveTab("attendance")}
+                            className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === "attendance"
+                                    ? "border-primary-500 text-primary-600 bg-primary-50/30"
+                                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                                }`}
+                        >
+                            <Clock className="w-4 h-4 inline mr-2" />
+                            Attendance History
+                        </button>
+                        <button
+                            onClick={() => setActiveTab("leaves")}
+                            className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === "leaves"
+                                    ? "border-primary-500 text-primary-600 bg-primary-50/30"
+                                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                                }`}
+                        >
+                            <Calendar className="w-4 h-4 inline mr-2" />
+                            Leave Requests
+                        </button>
+                    </div>
+                )}
+
                 {loading ? (
                     <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary-500" /></div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm">
-                            <thead className="bg-gray-50 border-b border-gray-100">
-                                <tr>
-                                    {isAdmin && <th className="p-4 font-medium text-gray-500">Staff</th>}
-                                    <th className="p-4 font-medium text-gray-500">Date</th>
-                                    <th className="p-4 font-medium text-gray-500">Status</th>
-                                    <th className="p-4 font-medium text-gray-500">Check In</th>
-                                    <th className="p-4 font-medium text-gray-500">Check Out</th>
-                                    <th className="p-4 font-medium text-gray-500">Duration</th>
-                                    <th className="p-4 font-medium text-gray-500">Approval</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {attendance.length > 0 ? (
-                                    attendance.map((record) => (
-                                        <tr key={record.id} className="hover:bg-gray-50">
-                                            {isAdmin && (
-                                                <td className="p-4 font-medium text-gray-900">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs">
-                                                            {record.user.name.charAt(0)}
+                        {activeTab === "attendance" ? (
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-100">
+                                    <tr>
+                                        {isAdmin && <th className="p-4 font-medium text-gray-500">Staff</th>}
+                                        <th className="p-4 font-medium text-gray-500">Date</th>
+                                        <th className="p-4 font-medium text-gray-500">Status</th>
+                                        <th className="p-4 font-medium text-gray-500">Check In</th>
+                                        <th className="p-4 font-medium text-gray-500">Check Out</th>
+                                        <th className="p-4 font-medium text-gray-500">Duration</th>
+                                        <th className="p-4 font-medium text-gray-500">Approval</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {attendance.length > 0 ? (
+                                        attendance.map((record) => (
+                                            <tr key={record.id} className="hover:bg-gray-50">
+                                                {isAdmin && (
+                                                    <td className="p-4 font-medium text-gray-900">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs">
+                                                                {record.user.name.charAt(0)}
+                                                            </div>
+                                                            {record.user.name}
                                                         </div>
-                                                        {record.user.name}
-                                                    </div>
+                                                    </td>
+                                                )}
+                                                <td className="p-4 text-gray-600">
+                                                    {formatDate(record.date)}
                                                 </td>
-                                            )}
-                                            <td className="p-4 text-gray-600">
-                                                {formatDate(record.date)}
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`badge ${STATUS_COLORS[record.status]}`}>
-                                                    {record.status.replace("_", " ")}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-gray-600 font-mono">
-                                                {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
-                                            </td>
-                                            <td className="p-4 text-gray-600 font-mono">
-                                                {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
-                                            </td>
-                                            <td className="p-4 text-gray-600 font-medium">
-                                                {calculateDuration(record.checkIn, record.checkOut)}
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`badge ${APPROVAL_COLORS[record.approvalStatus]}`}>
-                                                    {record.approvalStatus}
-                                                </span>
+                                                <td className="p-4">
+                                                    <span className={`badge ${STATUS_COLORS[record.status]}`}>
+                                                        {record.status.replace("_", " ")}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-gray-600 font-mono">
+                                                    {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                </td>
+                                                <td className="p-4 text-gray-600 font-mono">
+                                                    {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                </td>
+                                                <td className="p-4 text-gray-600 font-medium">
+                                                    {calculateDuration(record.checkIn, record.checkOut)}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`badge ${APPROVAL_COLORS[record.approvalStatus]}`}>
+                                                        {record.approvalStatus}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={isAdmin ? 7 : 6} className="p-8 text-center text-gray-500">
+                                                No attendance records found for this month.
                                             </td>
                                         </tr>
-                                    ))
-                                ) : (
+                                    )}
+                                </tbody>
+                            </table>
+                        ) : (
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-100">
                                     <tr>
-                                        <td colSpan={isAdmin ? 7 : 6} className="p-8 text-center text-gray-500">
-                                            No attendance records found for this month.
-                                        </td>
+                                        <th className="p-4 font-medium text-gray-500">Period</th>
+                                        <th className="p-4 font-medium text-gray-500">Type</th>
+                                        <th className="p-4 font-medium text-gray-500">Reason</th>
+                                        <th className="p-4 font-medium text-gray-500">Status</th>
+                                        <th className="p-4 font-medium text-gray-500">Submitted</th>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {leaveRequests.length > 0 ? (
+                                        leaveRequests.map((leave) => (
+                                            <tr key={leave.id} className="hover:bg-gray-50">
+                                                <td className="p-4 text-gray-600">
+                                                    {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className="badge bg-blue-100 text-blue-800">
+                                                        {leave.leaveType.replace("_", " ")}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-gray-600 max-w-xs truncate">
+                                                    {leave.reason}
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`badge ${APPROVAL_COLORS[leave.status]}`}>
+                                                        {leave.status}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-gray-500">
+                                                    {formatDate(leave.createdAt)}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td colSpan={5} className="p-8 text-center text-gray-500">
+                                                No leave requests found.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        )}
                     </div>
                 )}
             </div>

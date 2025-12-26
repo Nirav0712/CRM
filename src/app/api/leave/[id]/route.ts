@@ -44,7 +44,7 @@ export async function PUT(
             status,
             approvedBy: session.user.name,
             approvedAt: new Date(),
-            adminNote,
+            adminNote: adminNote || "",
             updatedAt: new Date()
         };
 
@@ -60,7 +60,12 @@ export async function PUT(
                 const leaveDate = new Date(d);
                 leaveDate.setHours(0, 0, 0, 0);
 
-                const dateStr = leaveDate.toISOString().split('T')[0];
+                // Use robust date string matching our fixed attendance API
+                const year = leaveDate.getFullYear();
+                const month = String(leaveDate.getMonth() + 1).padStart(2, '0');
+                const day = String(leaveDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+
                 const attendanceId = `${leaveData.userId}_${dateStr}`;
                 const attendanceRef = db.collection("attendance").doc(attendanceId);
 
@@ -93,10 +98,10 @@ export async function PUT(
             endDate: leaveData.endDate.toDate(),
             user
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating leave request:", error);
         return NextResponse.json(
-            { error: "Failed to update leave request" },
+            { error: "Failed to update leave request", details: error.message },
             { status: 500 }
         );
     }
