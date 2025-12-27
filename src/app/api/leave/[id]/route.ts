@@ -107,6 +107,86 @@ export async function PUT(
     }
 }
 
+// PATCH update leave request (owner only, pending only)
+export async function PATCH(
+    request: NextRequest,
+    { params }: { params: { id: string } }
+) {
+    try {
+        const session = await getServerSession(authOptions);
+
+        if (!session?.user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const leaveRef = db.collection("leaveRequests").doc(params.id);
+        const leaveDoc = await leaveRef.get();
+
+        if (!leaveDoc.exists) {
+            return NextResponse.json({ error: "Leave request not found" }, { status: 404 });
+        }
+
+        const leaveData = leaveDoc.data()!;
+
+        // Only owner can update
+        if (leaveData.userId !== (session.user as any).id) {
+            return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+        }
+
+        // Can only update pending requests
+        if (leaveData.status !== "PENDING") {
+            return NextResponse.json(
+                { error: "Can only update pending leave requests" },
+                { status: 400 }
+            );
+        }
+
+        const body = await request.json();
+        const { startDate, endDate, leaveType, reason } = body;
+
+        if (!startDate || !endDate || !leaveType || !reason) {
+            return NextResponse.json(
+                { error: "All fields are required" },
+                { status: 400 }
+            );
+        }
+
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+
+        if (start > end) {
+            return NextResponse.json(
+                { error: "Start date must be before end date" },
+                { status: 400 }
+            );
+        }
+
+        await leaveRef.update({
+            startDate: start,
+            endDate: end,
+            leaveType,
+            reason,
+            updatedAt: new Date()
+        });
+
+        return NextResponse.json({
+            id: params.id,
+            ...leaveData,
+            startDate: start,
+            endDate: end,
+            leaveType,
+            reason,
+            updatedAt: new Date()
+        });
+    } catch (error: any) {
+        console.error("Error updating leave request:", error);
+        return NextResponse.json(
+            { error: "Failed to update leave request", details: error.message },
+            { status: 500 }
+        );
+    }
+}
+
 // DELETE leave request (only pending, by owner or admin)
 export async function DELETE(
     request: NextRequest,

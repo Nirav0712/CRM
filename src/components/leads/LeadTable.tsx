@@ -287,230 +287,309 @@ export default function LeadTable() {
                 {loading ? "Loading..." : `${leads.length} lead${leads.length !== 1 ? "s" : ""} found`}
             </div>
 
-            {/* Desktop Table */}
-            <div className="hidden lg:block card overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Lead
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Contact
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Status
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Source
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Value
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Assigned To
-                                </th>
-                                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Date
-                                </th>
-                                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
-                                    Actions
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {leads.map((lead) => (
-                                <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-4 py-3">
-                                        <div>
-                                            <p className="font-medium text-gray-900">{lead.name}</p>
-                                            {lead.companyName && (
-                                                <p className="text-sm text-gray-500 flex items-center gap-1">
-                                                    <Building className="w-3 h-3" />
-                                                    {lead.companyName}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="space-y-1">
-                                            {lead.email && (
-                                                <p className="text-sm text-gray-600 flex items-center gap-1">
-                                                    <Mail className="w-3 h-3" />
-                                                    {lead.email}
-                                                </p>
-                                            )}
-                                            {lead.phone && (
-                                                <p className="text-sm text-gray-600 flex items-center gap-1">
-                                                    <Phone className="w-3 h-3" />
-                                                    {lead.phone}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <StatusBadge status={lead.status} />
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className="text-sm text-gray-600">
-                                            {lead.source?.name || "-"}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        {lead.leadValue ? (
-                                            <span className="text-sm font-medium text-gray-900">
-                                                {formatCurrency(lead.leadValue)}
-                                            </span>
-                                        ) : (
-                                            <span className="text-sm text-gray-400">-</span>
+            {/* Loading skeleton */}
+            {loading ? (
+                <div className="space-y-4">
+                    {/* Desktop loading skeleton */}
+                    <div className="hidden lg:block card overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        {["Lead", "Contact", "Status", "Source", "Value", "Assigned To", "Date", "Actions"].map((header, i) => (
+                                            <th key={i} className="text-left px-4 py-3">
+                                                <div className="h-4 w-20 bg-gray-200 rounded animate-pulse"></div>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map((row) => (
+                                        <tr key={row}>
+                                            <td className="px-4 py-3">
+                                                <div className="h-4 w-32 bg-gray-100 rounded animate-pulse mb-2"></div>
+                                                <div className="h-3 w-24 bg-gray-50 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-3 w-36 bg-gray-100 rounded animate-pulse mb-2"></div>
+                                                <div className="h-3 w-28 bg-gray-50 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-6 w-20 bg-gray-100 rounded-full animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-4 w-16 bg-gray-100 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-4 w-20 bg-gray-100 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-4 w-24 bg-gray-100 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="h-4 w-20 bg-gray-100 rounded animate-pulse"></div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <div className="h-6 w-6 bg-gray-100 rounded animate-pulse"></div>
+                                                    <div className="h-6 w-6 bg-gray-100 rounded animate-pulse"></div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Mobile loading skeleton */}
+                    <div className="lg:hidden space-y-3">
+                        {[1, 2, 3, 4, 5].map((card) => (
+                            <div key={card} className="card p-4">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex-1">
+                                        <div className="h-5 w-32 bg-gray-200 rounded animate-pulse mb-2"></div>
+                                        <div className="h-4 w-24 bg-gray-100 rounded animate-pulse"></div>
+                                    </div>
+                                    <div className="h-6 w-16 bg-gray-100 rounded-full animate-pulse"></div>
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="h-4 w-48 bg-gray-100 rounded animate-pulse"></div>
+                                    <div className="h-4 w-40 bg-gray-100 rounded animate-pulse"></div>
+                                    <div className="h-4 w-28 bg-gray-100 rounded animate-pulse"></div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* Desktop Table */}
+                    <div className="hidden lg:block card overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Lead
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Contact
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Status
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Source
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Value
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Assigned To
+                                        </th>
+                                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Date
+                                        </th>
+                                        <th className="text-right px-4 py-3 text-xs font-semibold text-gray-600 uppercase">
+                                            Actions
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {leads.map((lead) => (
+                                        <tr key={lead.id} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div>
+                                                    <p className="font-medium text-gray-900">{lead.name}</p>
+                                                    {lead.companyName && (
+                                                        <p className="text-sm text-gray-500 flex items-center gap-1">
+                                                            <Building className="w-3 h-3" />
+                                                            {lead.companyName}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="space-y-1">
+                                                    {lead.email && (
+                                                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                                                            <Mail className="w-3 h-3" />
+                                                            {lead.email}
+                                                        </p>
+                                                    )}
+                                                    {lead.phone && (
+                                                        <p className="text-sm text-gray-600 flex items-center gap-1">
+                                                            <Phone className="w-3 h-3" />
+                                                            {lead.phone}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <StatusBadge status={lead.status} />
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-sm text-gray-600">
+                                                    {lead.source?.name || "-"}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {lead.leadValue ? (
+                                                    <span className="text-sm font-medium text-gray-900">
+                                                        {formatCurrency(lead.leadValue)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-sm text-gray-400">-</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-sm text-gray-600">
+                                                    {lead.assignedTo?.name}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-sm text-gray-500">
+                                                    {formatDate(lead.createdAt)}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <Link
+                                                        href={`/dashboard/leads/${lead.id}`}
+                                                        className="p-1 text-gray-500 hover:text-primary-600 transition-colors"
+                                                        title="View"
+                                                    >
+                                                        <Eye className="w-4 h-4" />
+                                                    </Link>
+                                                    <Link
+                                                        href={`/dashboard/leads/${lead.id}/edit`}
+                                                        className="p-1 text-gray-500 hover:text-primary-600 transition-colors"
+                                                        title="Edit"
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                    </Link>
+                                                    {isAdmin && (
+                                                        <button
+                                                            onClick={() => handleDelete(lead.id)}
+                                                            className="p-1 text-gray-500 hover:text-red-600 transition-colors"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {/* Mobile Cards */}
+                    <div className="lg:hidden space-y-3">
+                        {leads.map((lead) => (
+                            <div key={lead.id} className="card p-4">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div>
+                                        <h3 className="font-medium text-gray-900">{lead.name}</h3>
+                                        {lead.companyName && (
+                                            <p className="text-sm text-gray-500">{lead.companyName}</p>
                                         )}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className="text-sm text-gray-600">
-                                            {lead.assignedTo?.name}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <span className="text-sm text-gray-500">
-                                            {formatDate(lead.createdAt)}
-                                        </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <div className="flex items-center justify-end gap-2">
-                                            <Link
-                                                href={`/dashboard/leads/${lead.id}`}
-                                                className="p-1 text-gray-500 hover:text-primary-600 transition-colors"
-                                                title="View"
-                                            >
-                                                <Eye className="w-4 h-4" />
-                                            </Link>
-                                            <Link
-                                                href={`/dashboard/leads/${lead.id}/edit`}
-                                                className="p-1 text-gray-500 hover:text-primary-600 transition-colors"
-                                                title="Edit"
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                            </Link>
-                                            {isAdmin && (
-                                                <button
-                                                    onClick={() => handleDelete(lead.id)}
-                                                    className="p-1 text-gray-500 hover:text-red-600 transition-colors"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
+                                    </div>
+                                    <StatusBadge status={lead.status} size="sm" />
+                                </div>
+
+                                <div className="space-y-2 text-sm">
+                                    {lead.email && (
+                                        <div className="flex items-center gap-2 text-gray-600">
+                                            <Mail className="w-4 h-4" />
+                                            <a href={`mailto:${lead.email}`} className="hover:text-primary-600">
+                                                {lead.email}
+                                            </a>
                                         </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+                                    )}
+                                    {lead.phone && (
+                                        <div className="flex items-center gap-2 text-gray-600">
+                                            <Phone className="w-4 h-4" />
+                                            <a href={`tel:${lead.phone}`} className="hover:text-primary-600">
+                                                {lead.phone}
+                                            </a>
+                                        </div>
+                                    )}
+                                    {lead.leadValue && (
+                                        <div className="flex items-center gap-2 text-gray-900 font-medium">
+                                            <IndianRupee className="w-4 h-4" />
+                                            {formatCurrency(lead.leadValue)}
+                                        </div>
+                                    )}
+                                    <div className="flex items-center gap-2 text-gray-500">
+                                        <Calendar className="w-4 h-4" />
+                                        {formatDate(lead.createdAt)}
+                                    </div>
+                                </div>
 
-            {/* Mobile Cards */}
-            <div className="lg:hidden space-y-3">
-                {leads.map((lead) => (
-                    <div key={lead.id} className="card p-4">
-                        <div className="flex justify-between items-start mb-3">
-                            <div>
-                                <h3 className="font-medium text-gray-900">{lead.name}</h3>
-                                {lead.companyName && (
-                                    <p className="text-sm text-gray-500">{lead.companyName}</p>
+                                {lead.tags && lead.tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-3">
+                                        {lead.tags.map((t) => (
+                                            <span
+                                                key={t.tagId}
+                                                className="badge text-xs"
+                                                style={{
+                                                    backgroundColor: `${t.tag?.color}20`,
+                                                    color: t.tag?.color,
+                                                }}
+                                            >
+                                                {t.tag?.name}
+                                            </span>
+                                        ))}
+                                    </div>
                                 )}
-                            </div>
-                            <StatusBadge status={lead.status} size="sm" />
-                        </div>
 
-                        <div className="space-y-2 text-sm">
-                            {lead.email && (
-                                <div className="flex items-center gap-2 text-gray-600">
-                                    <Mail className="w-4 h-4" />
-                                    <a href={`mailto:${lead.email}`} className="hover:text-primary-600">
-                                        {lead.email}
-                                    </a>
-                                </div>
-                            )}
-                            {lead.phone && (
-                                <div className="flex items-center gap-2 text-gray-600">
-                                    <Phone className="w-4 h-4" />
-                                    <a href={`tel:${lead.phone}`} className="hover:text-primary-600">
-                                        {lead.phone}
-                                    </a>
-                                </div>
-                            )}
-                            {lead.leadValue && (
-                                <div className="flex items-center gap-2 text-gray-900 font-medium">
-                                    <IndianRupee className="w-4 h-4" />
-                                    {formatCurrency(lead.leadValue)}
-                                </div>
-                            )}
-                            <div className="flex items-center gap-2 text-gray-500">
-                                <Calendar className="w-4 h-4" />
-                                {formatDate(lead.createdAt)}
-                            </div>
-                        </div>
-
-                        {lead.tags && lead.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-3">
-                                {lead.tags.map((t) => (
-                                    <span
-                                        key={t.tagId}
-                                        className="badge text-xs"
-                                        style={{
-                                            backgroundColor: `${t.tag?.color}20`,
-                                            color: t.tag?.color,
-                                        }}
-                                    >
-                                        {t.tag?.name}
+                                <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                                    <span className="text-sm text-gray-500">
+                                        {lead.assignedTo?.name}
                                     </span>
-                                ))}
+                                    <div className="flex items-center gap-3">
+                                        <Link
+                                            href={`/dashboard/leads/${lead.id}`}
+                                            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                        >
+                                            View
+                                        </Link>
+                                        <Link
+                                            href={`/dashboard/leads/${lead.id}/edit`}
+                                            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                        >
+                                            Edit
+                                        </Link>
+                                    </div>
+                                </div>
                             </div>
-                        )}
+                        ))}
+                    </div>
 
-                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
-                            <span className="text-sm text-gray-500">
-                                {lead.assignedTo?.name}
-                            </span>
-                            <div className="flex items-center gap-3">
-                                <Link
-                                    href={`/dashboard/leads/${lead.id}`}
-                                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                                >
-                                    View
-                                </Link>
-                                <Link
-                                    href={`/dashboard/leads/${lead.id}/edit`}
-                                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                                >
-                                    Edit
-                                </Link>
+                    {/* Empty state */}
+                    {!loading && leads.length === 0 && (
+                        <div className="card p-12 text-center">
+                            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
+                                <Search className="w-8 h-8 text-gray-400" />
                             </div>
+                            <h3 className="text-lg font-medium text-gray-900 mb-1">No leads found</h3>
+                            <p className="text-gray-500 mb-4">
+                                {hasActiveFilters
+                                    ? "Try adjusting your filters"
+                                    : "Get started by creating your first lead"}
+                            </p>
+                            {!hasActiveFilters && (
+                                <Link href="/dashboard/leads/new" className="btn-primary">
+                                    Add Your First Lead
+                                </Link>
+                            )}
                         </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Empty state */}
-            {!loading && leads.length === 0 && (
-                <div className="card p-12 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Search className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-1">No leads found</h3>
-                    <p className="text-gray-500 mb-4">
-                        {hasActiveFilters
-                            ? "Try adjusting your filters"
-                            : "Get started by creating your first lead"}
-                    </p>
-                    {!hasActiveFilters && (
-                        <Link href="/dashboard/leads/new" className="btn-primary">
-                            Add Your First Lead
-                        </Link>
                     )}
-                </div>
+                </>
             )}
         </div>
     );

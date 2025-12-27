@@ -115,6 +115,7 @@ export default function AttendancePage() {
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
     const [showLeaveForm, setShowLeaveForm] = useState(false);
+    const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<"attendance" | "leaves">("attendance");
     const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -275,27 +276,64 @@ export default function AttendancePage() {
             }
         } catch (error) {
             console.error(error);
-        } finally {
             setProcessing(false);
         }
     };
 
-    const handleApplyLeave = async (e: React.FormEvent) => {
+    const handleEditLeave = (leave: any) => {
+        setEditingLeaveId(leave.id);
+        setLeaveData({
+            startDate: new Date(leave.startDate).toISOString().split('T')[0],
+            endDate: new Date(leave.endDate).toISOString().split('T')[0],
+            leaveType: leave.leaveType,
+            reason: leave.reason,
+        });
+        setShowLeaveForm(true);
+    };
+
+    const handleDeleteLeave = async (leaveId: string) => {
+        if (!confirm("Are you sure you want to delete this leave request?")) return;
+
+        try {
+            const res = await fetch(`/api/leave/${leaveId}`, {
+                method: "DELETE",
+            });
+
+            if (res.ok) {
+                alert("Leave request deleted successfully");
+                fetchAttendance();
+            } else {
+                const err = await res.json();
+                alert(err.error || "Failed to delete leave request");
+            }
+        } catch (error) {
+            console.error(error);
+            alert("An error occurred while deleting the leave request");
+        }
+    };
+
+    const handleLeaveSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setApplyingLeave(true);
         try {
-            const res = await fetch("/api/leave", {
-                method: "POST",
+            const url = editingLeaveId ? `/api/leave/${editingLeaveId}` : "/api/leave";
+            const method = editingLeaveId ? "PATCH" : "POST";
+
+            const res = await fetch(url, {
+                method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(leaveData),
             });
+
             if (res.ok) {
                 setShowLeaveForm(false);
+                setEditingLeaveId(null);
                 setLeaveData({ startDate: "", endDate: "", leaveType: "FULL_DAY", reason: "" });
-                alert("Leave request submitted for approval");
+                fetchAttendance();
+                alert(editingLeaveId ? "Leave request updated successfully" : "Leave request submitted for approval");
             } else {
                 const err = await res.json();
-                alert(err.error || "Failed to apply leave");
+                alert(err.error || "Failed to save leave request");
             }
         } catch (error) {
             console.error(error);
@@ -555,6 +593,7 @@ export default function AttendancePage() {
                                         <th className="p-4 font-medium text-gray-500">Reason</th>
                                         <th className="p-4 font-medium text-gray-500">Status</th>
                                         <th className="p-4 font-medium text-gray-500">Submitted</th>
+                                        <th className="p-4 font-medium text-gray-500">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
@@ -580,11 +619,29 @@ export default function AttendancePage() {
                                                 <td className="p-4 text-gray-500">
                                                     {formatDate(leave.createdAt)}
                                                 </td>
+                                                <td className="p-4">
+                                                    {leave.status === "PENDING" && (
+                                                        <div className="flex items-center gap-2">
+                                                            <button
+                                                                onClick={() => handleEditLeave(leave)}
+                                                                className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteLeave(leave.id)}
+                                                                className="text-red-600 hover:text-red-700 text-sm font-medium"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={5} className="p-8 text-center text-gray-500">
+                                            <td colSpan={6} className="p-8 text-center text-gray-500">
                                                 No leave requests found.
                                             </td>
                                         </tr>
@@ -601,12 +658,20 @@ export default function AttendancePage() {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
                         <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-lg font-bold">Apply for Leave</h3>
-                            <button onClick={() => setShowLeaveForm(false)} className="text-gray-400 hover:text-gray-600">
+                            <h3 className="text-xl font-bold text-gray-900">
+                                {editingLeaveId ? "Edit Leave Request" : "Apply for Leave"}
+                            </h3>
+                            <button
+                                onClick={() => {
+                                    setShowLeaveForm(false);
+                                    setEditingLeaveId(null);
+                                    setLeaveData({ startDate: "", endDate: "", leaveType: "FULL_DAY", reason: "" });
+                                }}
+                                className="text-gray-400 hover:text-gray-600 transition-colors">
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
-                        <form onSubmit={handleApplyLeave} className="space-y-4">
+                        <form onSubmit={handleLeaveSubmit} className="space-y-4">
                             <div>
                                 <label className="label">Start Date</label>
                                 <input type="date" className="input" required value={leaveData.startDate} onChange={e => setLeaveData({ ...leaveData, startDate: e.target.value })} />
