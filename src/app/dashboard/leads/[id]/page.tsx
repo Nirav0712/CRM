@@ -86,7 +86,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
             ...doc.data(),
             changedAt: doc.data().changedAt?.toDate()
         }))
-        .sort((a, b) => {
+        .sort((a: any, b: any) => {
             // Sort by changedAt descending (newest first)
             const timeA = a.changedAt?.getTime() || 0;
             const timeB = b.changedAt?.getTime() || 0;
