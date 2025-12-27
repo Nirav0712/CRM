@@ -62,30 +62,33 @@ export default async function EditLeadPage({ params }: PageProps) {
         };
     }));
 
-    const lead = {
+    // Serialize the lead data to JSON-safe format (converts Timestamps to strings)
+    const serializedLead = JSON.parse(JSON.stringify({
         id: leadDoc.id,
         ...leadData,
+        createdAt: leadData.createdAt?.toDate() || null,
+        updatedAt: leadData.updatedAt?.toDate() || null,
         source,
         assignedTo,
         tags
-    };
+    }));
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex items-center gap-4">
                 <Link
-                    href={`/dashboard/leads/${lead.id}`}
+                    href={`/dashboard/leads/${serializedLead.id}`}
                     className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                     <ArrowLeft className="w-5 h-5 text-gray-600" />
                 </Link>
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Edit Lead</h1>
-                    <p className="text-gray-500">{(lead as any).name}</p>
+                    <p className="text-gray-500">{(serializedLead as any).name}</p>
                 </div>
             </div>
 
-            <LeadForm lead={lead as any} isEdit />
+            <LeadForm lead={serializedLead as any} isEdit />
         </div>
     );
 }
