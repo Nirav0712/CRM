@@ -78,14 +78,20 @@ export default async function LeadDetailPage({ params }: PageProps) {
 
     const statusHistorySnapshot = await db.collection("statusHistory")
         .where("leadId", "==", params.id)
-        .orderBy("changedAt", "desc")
         .get();
 
-    const statusHistory = statusHistorySnapshot.docs.map((doc: any) => ({
-        id: doc.id,
-        ...doc.data(),
-        changedAt: doc.data().changedAt?.toDate()
-    }));
+    const statusHistory = statusHistorySnapshot.docs
+        .map((doc: any) => ({
+            id: doc.id,
+            ...doc.data(),
+            changedAt: doc.data().changedAt?.toDate()
+        }))
+        .sort((a, b) => {
+            // Sort by changedAt descending (newest first)
+            const timeA = a.changedAt?.getTime() || 0;
+            const timeB = b.changedAt?.getTime() || 0;
+            return timeB - timeA;
+        });
 
     const lead = {
         id: leadDoc.id,

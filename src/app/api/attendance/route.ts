@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
         const userId = searchParams.get("userId");
         const month = searchParams.get("month"); // Format: YYYY-MM
         const status = searchParams.get("status");
+        const isAdmin = (session.user as any).role === "ADMIN";
 
         let query: any = db.collection("attendance");
 
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
             }
             if (!user) user = { id: data.userId || "deleted", name: "Deleted User", email: "" };
 
-            return {
+            const record: any = {
                 id: doc.id,
                 ...data,
                 date: data.date?.toDate(),
@@ -50,6 +51,14 @@ export async function GET(request: NextRequest) {
                 checkOut: data.checkOut?.toDate(),
                 user
             };
+
+            // Filter sensitive location data for staff users
+            if (!isAdmin) {
+                delete record.ipAddress;
+                delete record.location;
+            }
+
+            return record;
         }));
 
         // In-memory Filter by month
@@ -94,34 +103,47 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // IP Restriction Check
+        // Extract IP address from request headers
+        const forwardedFor = request.headers.get("x-forwarded-for");
+        const realIp = request.headers.get("x-real-ip");
+        let clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : (realIp || "127.0.0.1");
+
+        // Normalize IPs for local testing (mapping IPv6 loopback to IPv4)
+        const normalizeIp = (ip: string) => (ip === "::1" || ip === "::ffff:127.0.0.1") ? "127.0.0.1" : ip.trim();
+        clientIp = normalizeIp(clientIp);
+
+        // IP Restriction Check (only if enabled)
         if ((session.user as any).role === "STAFF") {
-            const settingsDoc = await db.collection("systemSettings")
-                .doc("office_ip")
+            // Check if IP restriction is enabled
+            const ipRestrictionDoc = await db.collection("systemSettings")
+                .doc("ip_restriction")
                 .get();
 
-            if (settingsDoc.exists) {
-                const settings = settingsDoc.data();
-                if (settings && settings.value) {
-                    const forwardedFor = request.headers.get("x-forwarded-for");
-                    let clientIp = forwardedFor ? forwardedFor.split(",")[0] : "127.0.0.1";
+            const ipRestrictionEnabled = ipRestrictionDoc.exists ? ipRestrictionDoc.data()?.enabled : true;
 
-                    // Normalize IPs for local testing (mapping IPv6 loopback to IPv4)
-                    const normalizeIp = (ip: string) => (ip === "::1" || ip === "::ffff:127.0.0.1") ? "127.0.0.1" : ip.trim();
-                    const normalizedClient = normalizeIp(clientIp);
-                    const normalizedAllowed = normalizeIp(settings.value);
+            // Only enforce IP restriction if it's enabled
+            if (ipRestrictionEnabled) {
+                const settingsDoc = await db.collection("systemSettings")
+                    .doc("office_ip")
+                    .get();
 
-                    if (normalizedClient !== normalizedAllowed) {
-                        return NextResponse.json({
-                            error: `Attendance can only be marked from the office network (Allowed: ${settings.value}, Your IP: ${clientIp})`
-                        }, { status: 403 });
+                if (settingsDoc.exists) {
+                    const settings = settingsDoc.data();
+                    if (settings && settings.value) {
+                        const normalizedAllowed = normalizeIp(settings.value);
+
+                        if (clientIp !== normalizedAllowed) {
+                            return NextResponse.json({
+                                error: `Attendance can only be marked from the office network (Allowed: ${settings.value}, Your IP: ${clientIp})`
+                            }, { status: 403 });
+                        }
                     }
                 }
             }
         }
 
         const body = await request.json();
-        const { date, status = "PRESENT", checkIn, checkOut, note } = body;
+        const { date, status = "PRESENT", checkIn, checkOut, note, location } = body;
 
         if (!date) {
             return NextResponse.json({ error: "Date is required" }, { status: 400 });
@@ -155,8 +177,18 @@ export async function POST(request: NextRequest) {
             checkOut: checkOut ? new Date(checkOut) : getAsDate(existingData?.checkOut),
             note: note !== undefined ? note : (existingData?.note || null),
             approvalStatus: "PENDING", // Always PENDING for admin review
+            ipAddress: clientIp, // Store IP address
             updatedAt: new Date(),
         };
+
+        // Add location data if provided (optional)
+        if (location && location.latitude && location.longitude) {
+            data.location = {
+                latitude: location.latitude,
+                longitude: location.longitude,
+                timestamp: location.timestamp || Date.now(),
+            };
+        }
 
         if (!doc.exists) {
             data.createdAt = new Date();

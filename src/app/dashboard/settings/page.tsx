@@ -12,6 +12,8 @@ export default function SettingsPage() {
     const [saving, setSaving] = useState(false);
     const [ipValue, setIpValue] = useState("");
     const [currentConfiguredIp, setCurrentConfiguredIp] = useState<string | null>(null);
+    const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(true);
+    const [ipRestrictionEnabled, setIpRestrictionEnabled] = useState(true);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
     const [passSaving, setPassSaving] = useState(false);
@@ -28,6 +30,8 @@ export default function SettingsPage() {
             if (res.ok) {
                 setCurrentConfiguredIp(data.office_ip);
                 setIpValue(data.office_ip || "");
+                setLocationTrackingEnabled(data.location_tracking_enabled !== false);
+                setIpRestrictionEnabled(data.ip_restriction_enabled !== false); // Default to true
             }
         } catch (error) {
             console.error(error);
@@ -53,6 +57,54 @@ export default function SettingsPage() {
                 setMessage({ type: "success", text: `Office IP updated successfully to ${data.office_ip}` });
             } else {
                 setMessage({ type: "error", text: data.error || "Failed to update IP" });
+            }
+        } catch (error) {
+            setMessage({ type: "error", text: "An error occurred" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleToggleLocationTracking = async (enabled: boolean) => {
+        setSaving(true);
+        setMessage(null);
+        try {
+            const res = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ location_tracking_enabled: enabled }),
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                setLocationTrackingEnabled(enabled);
+                setMessage({ type: "success", text: `Location tracking ${enabled ? 'enabled' : 'disabled'} successfully` });
+            } else {
+                setMessage({ type: "error", text: data.error || "Failed to update setting" });
+            }
+        } catch (error) {
+            setMessage({ type: "error", text: "An error occurred" });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleToggleIpRestriction = async (enabled: boolean) => {
+        setSaving(true);
+        setMessage(null);
+        try {
+            const res = await fetch("/api/settings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ip_restriction_enabled: enabled }),
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                setIpRestrictionEnabled(enabled);
+                setMessage({ type: "success", text: `IP restriction ${enabled ? 'enabled' : 'disabled'} successfully` });
+            } else {
+                setMessage({ type: "error", text: data.error || "Failed to update setting" });
             }
         } catch (error) {
             setMessage({ type: "error", text: "An error occurred" });
@@ -175,6 +227,76 @@ export default function SettingsPage() {
                         <p className="text-xs text-gray-400 mt-1">
                             Detected: Your current IP will be saved (likely 127.0.0.1 if using localhost).
                         </p>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-gray-700">Enforce IP Restriction</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Require staff to mark attendance only from the configured office IP
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => handleToggleIpRestriction(!ipRestrictionEnabled)}
+                                disabled={saving}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${ipRestrictionEnabled ? 'bg-primary-600' : 'bg-gray-300'
+                                    }`}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ipRestrictionEnabled ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                />
+                            </button>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                            <span className={`text-xs font-medium px-2 py-1 rounded ${ipRestrictionEnabled
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-green-100 text-green-600'
+                                }`}>
+                                {ipRestrictionEnabled ? '🔒 Restricted' : '🌍 Allowed from anywhere'}
+                            </span>
+                            {!ipRestrictionEnabled && (
+                                <span className="text-xs text-gray-500">
+                                    Staff can mark attendance from any location
+                                </span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-sm font-medium text-gray-700">Location Tracking</p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Capture IP address and GPS coordinates when staff marks attendance
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => handleToggleLocationTracking(!locationTrackingEnabled)}
+                                disabled={saving}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${locationTrackingEnabled ? 'bg-primary-600' : 'bg-gray-300'
+                                    }`}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${locationTrackingEnabled ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                />
+                            </button>
+                        </div>
+                        <div className="mt-2 flex items-center gap-2">
+                            <span className={`text-xs font-medium px-2 py-1 rounded ${locationTrackingEnabled
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                {locationTrackingEnabled ? '✓ Enabled' : '✗ Disabled'}
+                            </span>
+                            {locationTrackingEnabled && (
+                                <span className="text-xs text-gray-500">
+                                    Staff location will be captured and visible to admins only
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
 

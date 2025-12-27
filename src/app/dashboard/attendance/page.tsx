@@ -26,6 +26,12 @@ interface Attendance {
     checkOut: string | null;
     note: string | null;
     approvedBy: string | null;
+    ipAddress?: string;
+    location?: {
+        latitude: number;
+        longitude: number;
+        timestamp: number;
+    };
     user: { id: string; name: string; email: string };
 }
 
@@ -64,6 +70,43 @@ const getLocalDateStr = (date = new Date()) => {
     return `${year}-${month}-${day}`;
 };
 
+// Helper to get user's location using browser Geolocation API
+const getUserLocation = (): Promise<{ latitude: number; longitude: number; timestamp: number } | null> => {
+    return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+            console.log("Geolocation is not supported by this browser");
+            resolve(null);
+            return;
+        }
+
+        const timeoutId = setTimeout(() => {
+            console.log("Geolocation timeout");
+            resolve(null);
+        }, 5000); // 5 second timeout
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                clearTimeout(timeoutId);
+                resolve({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                    timestamp: position.timestamp,
+                });
+            },
+            (error) => {
+                clearTimeout(timeoutId);
+                console.log("Geolocation error:", error.message);
+                resolve(null); // Don't fail, just return null
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 5000,
+                maximumAge: 0,
+            }
+        );
+    });
+};
+
 export default function AttendancePage() {
     const { data: session } = useSession();
     const isAdmin = session?.user?.role === "ADMIN";
@@ -73,6 +116,7 @@ export default function AttendancePage() {
     const [processing, setProcessing] = useState(false);
     const [showLeaveForm, setShowLeaveForm] = useState(false);
     const [activeTab, setActiveTab] = useState<"attendance" | "leaves">("attendance");
+    const [locationTrackingEnabled, setLocationTrackingEnabled] = useState(true);
     const [selectedMonth, setSelectedMonth] = useState(() => {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -89,7 +133,20 @@ export default function AttendancePage() {
 
     useEffect(() => {
         fetchAttendance();
+        fetchLocationTrackingSetting();
     }, [selectedMonth]);
+
+    const fetchLocationTrackingSetting = async () => {
+        try {
+            const res = await fetch("/api/settings");
+            if (res.ok) {
+                const data = await res.json();
+                setLocationTrackingEnabled(data.location_tracking_enabled !== false);
+            }
+        } catch (error) {
+            console.error("Error fetching location tracking setting:", error);
+        }
+    };
 
     const fetchAttendance = async () => {
         setLoading(true);
@@ -118,6 +175,12 @@ export default function AttendancePage() {
             const now = new Date();
             const dateStr = getLocalDateStr(now);
 
+            // Only try to get location if tracking is enabled
+            let location = null;
+            if (locationTrackingEnabled) {
+                location = await getUserLocation();
+            }
+
             const res = await fetch("/api/attendance", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -125,12 +188,17 @@ export default function AttendancePage() {
                     date: dateStr,
                     status: "PRESENT",
                     checkIn: now.toISOString(),
+                    location, // Will be null if user denied or failed
                 }),
             });
-            if (res.ok) fetchAttendance();
-            else {
+            if (res.ok) {
+                fetchAttendance();
+            } else {
                 const err = await res.json();
-                alert(err.error || "Failed to check in");
+                // Only show alert for actual errors, not geolocation issues
+                if (err.error && !err.error.includes("location")) {
+                    alert(err.error || "Failed to check in");
+                }
             }
         } catch (error) {
             console.error(error);
@@ -145,18 +213,28 @@ export default function AttendancePage() {
             const now = new Date();
             const dateStr = getLocalDateStr(now);
 
+            // Only try to get location if tracking is enabled
+            let location = null;
+            if (locationTrackingEnabled) {
+                location = await getUserLocation();
+            }
+
             const res = await fetch("/api/attendance", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     date: dateStr,
                     checkOut: now.toISOString(),
+                    location, // Will be null if user denied or failed
                 }),
             });
-            if (res.ok) fetchAttendance();
-            else {
+            if (res.ok) {
+                fetchAttendance();
+            } else {
                 const err = await res.json();
-                alert(err.error || "Failed to check out");
+                if (err.error && !err.error.includes("location")) {
+                    alert(err.error || "Failed to check out");
+                }
             }
         } catch (error) {
             console.error(error);
@@ -172,18 +250,28 @@ export default function AttendancePage() {
             const now = new Date();
             const dateStr = getLocalDateStr(now);
 
+            // Only try to get location if tracking is enabled
+            let location = null;
+            if (locationTrackingEnabled) {
+                location = await getUserLocation();
+            }
+
             const res = await fetch("/api/attendance", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     date: dateStr,
                     status: "ABSENT",
+                    location, // Will be null if user denied or failed
                 }),
             });
-            if (res.ok) fetchAttendance();
-            else {
+            if (res.ok) {
+                fetchAttendance();
+            } else {
                 const err = await res.json();
-                alert(err.error || "Failed to mark absent");
+                if (err.error && !err.error.includes("location")) {
+                    alert(err.error || "Failed to mark absent");
+                }
             }
         } catch (error) {
             console.error(error);
@@ -348,8 +436,8 @@ export default function AttendancePage() {
                         <button
                             onClick={() => setActiveTab("attendance")}
                             className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === "attendance"
-                                    ? "border-primary-500 text-primary-600 bg-primary-50/30"
-                                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                                ? "border-primary-500 text-primary-600 bg-primary-50/30"
+                                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                                 }`}
                         >
                             <Clock className="w-4 h-4 inline mr-2" />
@@ -358,8 +446,8 @@ export default function AttendancePage() {
                         <button
                             onClick={() => setActiveTab("leaves")}
                             className={`px-6 py-4 text-sm font-medium transition-colors border-b-2 ${activeTab === "leaves"
-                                    ? "border-primary-500 text-primary-600 bg-primary-50/30"
-                                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                                ? "border-primary-500 text-primary-600 bg-primary-50/30"
+                                : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                                 }`}
                         >
                             <Calendar className="w-4 h-4 inline mr-2" />
@@ -382,6 +470,7 @@ export default function AttendancePage() {
                                         <th className="p-4 font-medium text-gray-500">Check In</th>
                                         <th className="p-4 font-medium text-gray-500">Check Out</th>
                                         <th className="p-4 font-medium text-gray-500">Duration</th>
+                                        {isAdmin && <th className="p-4 font-medium text-gray-500">Location</th>}
                                         <th className="p-4 font-medium text-gray-500">Approval</th>
                                     </tr>
                                 </thead>
@@ -416,6 +505,31 @@ export default function AttendancePage() {
                                                 <td className="p-4 text-gray-600 font-medium">
                                                     {calculateDuration(record.checkIn, record.checkOut)}
                                                 </td>
+                                                {isAdmin && (
+                                                    <td className="p-4 text-gray-600 text-xs">
+                                                        {record.ipAddress ? (
+                                                            <div className="space-y-1">
+                                                                <div className="font-mono text-gray-500">
+                                                                    IP: {record.ipAddress}
+                                                                </div>
+                                                                {record.location && (
+                                                                    <div>
+                                                                        <a
+                                                                            href={`https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-primary-600 hover:text-primary-700 underline"
+                                                                        >
+                                                                            {record.location.latitude.toFixed(4)}, {record.location.longitude.toFixed(4)}
+                                                                        </a>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-gray-400">-</span>
+                                                        )}
+                                                    </td>
+                                                )}
                                                 <td className="p-4">
                                                     <span className={`badge ${APPROVAL_COLORS[record.approvalStatus]}`}>
                                                         {record.approvalStatus}
@@ -425,7 +539,7 @@ export default function AttendancePage() {
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={isAdmin ? 7 : 6} className="p-8 text-center text-gray-500">
+                                            <td colSpan={isAdmin ? 8 : 6} className="p-8 text-center text-gray-500">
                                                 No attendance records found for this month.
                                             </td>
                                         </tr>
