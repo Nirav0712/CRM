@@ -22,7 +22,8 @@ export const sendMessage = async (
     chatId: string,
     senderId: string,
     senderName: string,
-    text: string
+    text: string,
+    senderRole?: string
 ): Promise<void> => {
     const messagesRef = ref(realtimeDb, `chats/${chatId}/messages`);
     const newMessageRef = push(messagesRef);
@@ -30,9 +31,11 @@ export const sendMessage = async (
     const message = {
         senderId,
         senderName,
+        senderRole: senderRole || 'STAFF',
         text,
         timestamp: Date.now(),
-        read: { [senderId]: true }
+        read: { [senderId]: true },
+        readBy: { [senderId]: Date.now() }
     };
 
     await set(newMessageRef, message);
@@ -83,9 +86,16 @@ export const markMessagesAsRead = async (
     const snapshot = await get(messagesRef);
 
     const updates: { [key: string]: any } = {};
+    const readTimestamp = Date.now();
+
     snapshot.forEach((childSnapshot) => {
         const messageId = childSnapshot.key;
-        updates[`${messageId}/read/${userId}`] = true;
+        const messageData = childSnapshot.val();
+        // Only mark as read if user didn't send it
+        if (messageData.senderId !== userId) {
+            updates[`${messageId}/read/${userId}`] = true;
+            updates[`${messageId}/readBy/${userId}`] = readTimestamp;
+        }
     });
 
     if (Object.keys(updates).length > 0) {

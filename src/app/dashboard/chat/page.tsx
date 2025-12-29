@@ -5,6 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import ChatLayout from '@/components/chat/ChatLayout';
 import AdminChatMonitor from '@/components/chat/AdminChatMonitor';
+import NotificationSettings from '@/components/chat/NotificationSettings';
 import { ChatUser } from '@/types/chat';
 
 export default function ChatPage() {
@@ -69,9 +70,15 @@ export default function ChatPage() {
 
             {/* Regular Chat Interface */}
             <div className="mb-8">
+                {/* Notification Settings */}
+                <div className="mb-4">
+                    <NotificationSettings />
+                </div>
+
                 <ChatLayout
                     currentUserId={session.user.id}
                     currentUserName={session.user.name}
+                    currentUserRole={session.user.role}
                     users={users}
                 />
             </div>

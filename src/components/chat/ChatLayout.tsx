@@ -12,10 +12,11 @@ import { updateUserPresence } from '@/lib/realtimeDb';
 interface ChatLayoutProps {
     currentUserId: string;
     currentUserName: string;
+    currentUserRole?: string;
     users: ChatUser[];
 }
 
-export default function ChatLayout({ currentUserId, currentUserName, users }: ChatLayoutProps) {
+export default function ChatLayout({ currentUserId, currentUserName, currentUserRole, users }: ChatLayoutProps) {
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [selectedChatName, setSelectedChatName] = useState<string>('');
     const [isUserSelectorOpen, setIsUserSelectorOpen] = useState(false);
@@ -97,6 +98,7 @@ export default function ChatLayout({ currentUserId, currentUserName, users }: Ch
                     chatId={selectedChatId}
                     currentUserId={currentUserId}
                     currentUserName={currentUserName}
+                    currentUserRole={currentUserRole}
                 />
             </div>
 

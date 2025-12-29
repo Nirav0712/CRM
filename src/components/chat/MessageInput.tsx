@@ -8,9 +8,10 @@ interface MessageInputProps {
     chatId: string | null;
     currentUserId: string;
     currentUserName: string;
+    currentUserRole?: string;
 }
 
-export default function MessageInput({ chatId, currentUserId, currentUserName }: MessageInputProps) {
+export default function MessageInput({ chatId, currentUserId, currentUserName, currentUserRole }: MessageInputProps) {
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const [isTyping, setIsTyping] = useState(false);
@@ -67,7 +68,7 @@ export default function MessageInput({ chatId, currentUserId, currentUserName }:
         }
 
         try {
-            await sendMessage(chatId, currentUserId, currentUserName, messageText);
+            await sendMessage(chatId, currentUserId, currentUserName, messageText, currentUserRole);
         } catch (error) {
             console.error('Error sending message:', error);
             alert('Failed to send message. Please try again.');

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { CheckCheck, Check, Shield, UserCircle } from 'lucide-react';
 import { Message, TypingIndicator } from '@/types/chat';
-import { subscribeToMessages, subscribeToTyping } from '@/lib/realtimeDb';
+import { subscribeToMessages, subscribeToTyping, markMessagesAsRead } from '@/lib/realtimeDb';
+import { notifyNewMessage } from '@/lib/notifications';
 
 interface MessageDisplayProps {
     chatId: string | null;
@@ -15,10 +17,12 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
     const [typingUsers, setTypingUsers] = useState<TypingIndicator[]>([]);
     const [loading, setLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const previousMessagesRef = useRef<Message[]>([]);
 
     useEffect(() => {
         if (!chatId) {
             setMessages([]);
+            previousMessagesRef.current = [];
             return;
         }
 
@@ -26,8 +30,37 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
 
         // Subscribe to messages
         const unsubscribeMessages = subscribeToMessages(chatId, (newMessages) => {
+            // Check for new messages to trigger notifications
+            if (previousMessagesRef.current.length > 0) {
+                const newMessagesList = newMessages.filter(msg =>
+                    !previousMessagesRef.current.some(prevMsg => prevMsg.id === msg.id)
+                );
+
+                // Notify for messages not sent by current user
+                newMessagesList.forEach(msg => {
+                    if (msg.senderId !== currentUserId) {
+                        const isGroupChat = chatId.startsWith('group/');
+                        const priority = msg.senderRole === 'ADMIN' ? 'high' : 'normal';
+                        notifyNewMessage(
+                            msg.senderName,
+                            msg.text,
+                            chatId,
+                            msg.senderId,
+                            isGroupChat,
+                            priority
+                        );
+                    }
+                });
+            }
+
+            previousMessagesRef.current = newMessages;
             setMessages(newMessages);
             setLoading(false);
+
+            // Mark messages as read
+            if (newMessages.length > 0) {
+                markMessagesAsRead(chatId, currentUserId);
+            }
         });
 
         // Subscribe to typing indicators
@@ -84,6 +117,16 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
         }
     };
 
+    const getReadStatus = (message: Message) => {
+        if (!message.readBy) return { isRead: false, readCount: 0 };
+
+        const readByUsers = Object.keys(message.readBy).filter(userId => userId !== message.senderId);
+        return {
+            isRead: readByUsers.length > 0,
+            readCount: readByUsers.length
+        };
+    };
+
     return (
         <div className="flex-1 flex flex-col bg-white overflow-hidden">
             {/* Messages Container */}
@@ -95,6 +138,9 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
                 ) : (
                     messages.map((message) => {
                         const isSent = message.senderId === currentUserId;
+                        const readStatus = getReadStatus(message);
+                        const isAdmin = message.senderRole === 'ADMIN';
+
                         return (
                             <div
                                 key={message.id}
@@ -102,21 +148,47 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
                             >
                                 <div className={`max-w-[70%] ${isSent ? 'items-end' : 'items-start'} flex flex-col`}>
                                     {!isSent && (
-                                        <span className="text-xs text-gray-600 mb-1 px-1">
-                                            {message.senderName}
-                                        </span>
+                                        <div className="flex items-center gap-2 mb-1 px-1">
+                                            <UserCircle className="w-4 h-4 text-gray-500" />
+                                            <span className="text-xs font-medium text-gray-700">
+                                                {message.senderName}
+                                            </span>
+                                            {isAdmin && (
+                                                <span className="flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+                                                    <Shield className="w-3 h-3" />
+                                                    Admin
+                                                </span>
+                                            )}
+                                        </div>
                                     )}
                                     <div
                                         className={`rounded-lg px-4 py-2 ${isSent
-                                                ? 'bg-blue-600 text-white'
-                                                : 'bg-gray-100 text-gray-900'
+                                            ? isAdmin
+                                                ? 'bg-purple-600 text-white'
+                                                : 'bg-blue-600 text-white'
+                                            : 'bg-gray-100 text-gray-900'
                                             }`}
                                     >
                                         <p className="whitespace-pre-wrap break-words">{message.text}</p>
                                     </div>
-                                    <span className="text-xs text-gray-500 mt-1 px-1">
-                                        {formatTime(message.timestamp)}
-                                    </span>
+                                    <div className="flex items-center gap-2 mt-1 px-1">
+                                        <span className="text-xs text-gray-500">
+                                            {formatTime(message.timestamp)}
+                                        </span>
+                                        {isSent && (
+                                            <span className="flex items-center gap-1">
+                                                {readStatus.isRead ? (
+                                                    <span title={`Read by ${readStatus.readCount} ${readStatus.readCount === 1 ? 'person' : 'people'}`}>
+                                                        <CheckCheck className="w-4 h-4 text-blue-600" />
+                                                    </span>
+                                                ) : (
+                                                    <span title="Sent">
+                                                        <Check className="w-4 h-4 text-gray-400" />
+                                                    </span>
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         );

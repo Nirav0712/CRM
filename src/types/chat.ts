@@ -3,9 +3,11 @@ export interface Message {
     chatId: string;
     senderId: string;
     senderName: string;
+    senderRole?: string;
     text: string;
     timestamp: number;
     read: { [userId: string]: boolean };
+    readBy?: { [userId: string]: number }; // userId -> timestamp when read
 }
 
 export interface Chat {
