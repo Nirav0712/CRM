@@ -3,13 +3,20 @@
 import { useEffect, useState } from 'react';
 import { Users, MessageCircle, Plus } from 'lucide-react';
 import { Chat } from '@/types/chat';
-import { subscribeToUserChats, initializeGroupChat } from '@/lib/realtimeDb';
+import { subscribeToUserChats, initializeGroupChat, subscribeToPresence } from '@/lib/realtimeDb';
 
 interface ConversationListProps {
     currentUserId: string;
     selectedChatId: string | null;
     onSelectChat: (chatId: string, chatName: string) => void;
     onNewMessage: () => void;
+}
+
+interface UserPresenceStatus {
+    [userId: string]: {
+        status: 'online' | 'offline';
+        lastSeen: number;
+    };
 }
 
 export default function ConversationList({
@@ -20,6 +27,7 @@ export default function ConversationList({
 }: ConversationListProps) {
     const [chats, setChats] = useState<Chat[]>([]);
     const [loading, setLoading] = useState(true);
+    const [userPresence, setUserPresence] = useState<UserPresenceStatus>({});
 
     useEffect(() => {
         // Initialize group chat
@@ -29,6 +37,22 @@ export default function ConversationList({
         const unsubscribe = subscribeToUserChats(currentUserId, (userChats) => {
             setChats(userChats);
             setLoading(false);
+
+            // Subscribe to presence for all direct chat participants
+            userChats.forEach(chat => {
+                if (chat.type === 'direct' && chat.participantIds) {
+                    chat.participantIds.forEach(participantId => {
+                        if (participantId !== currentUserId) {
+                            subscribeToPresence(participantId, (status, lastSeen) => {
+                                setUserPresence(prev => ({
+                                    ...prev,
+                                    [participantId]: { status, lastSeen }
+                                }));
+                            });
+                        }
+                    });
+                }
+            });
         });
 
         return () => unsubscribe();
@@ -54,6 +78,23 @@ export default function ConversationList({
         }
     };
 
+    const formatLastSeen = (timestamp: number) => {
+        const now = Date.now();
+        const diffInMs = now - timestamp;
+        const diffInMinutes = Math.floor(diffInMs / (1000 * 60));
+        const diffInHours = Math.floor(diffInMs / (1000 * 60 * 60));
+        const diffInDays = Math.floor(diffInMs / (1000 * 60 * 60 * 24));
+
+        if (diffInMinutes < 1) return 'Just now';
+        if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+        if (diffInHours < 24) return `${diffInHours}h ago`;
+        if (diffInDays === 1) return 'Yesterday';
+        if (diffInDays < 7) return `${diffInDays}d ago`;
+
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    };
+
     const getChatDisplayName = (chat: Chat) => {
         if (chat.type === 'group') {
             return chat.name || 'All Office Members';
@@ -61,6 +102,20 @@ export default function ConversationList({
             // For direct chats, show the other participant's name
             return chat.name || 'Unknown User';
         }
+    };
+
+    const getOtherParticipantId = (chat: Chat): string | null => {
+        if (chat.type === 'direct' && chat.participantIds) {
+            return chat.participantIds.find(id => id !== currentUserId) || null;
+        }
+        return null;
+    };
+
+    const getUserPresenceInfo = (userId: string | null) => {
+        if (!userId || !userPresence[userId]) {
+            return null;
+        }
+        return userPresence[userId];
     };
 
     if (loading) {
@@ -103,6 +158,8 @@ export default function ConversationList({
                     chats.map((chat) => {
                         const isSelected = chat.id === selectedChatId;
                         const displayName = getChatDisplayName(chat);
+                        const otherUserId = getOtherParticipantId(chat);
+                        const presenceInfo = getUserPresenceInfo(otherUserId);
 
                         return (
                             <div
@@ -112,13 +169,20 @@ export default function ConversationList({
                                     }`}
                             >
                                 <div className="flex items-start gap-3">
-                                    {/* Icon */}
-                                    <div className={`p-2 rounded-full ${chat.type === 'group' ? 'bg-purple-100' : 'bg-blue-100'
-                                        }`}>
-                                        {chat.type === 'group' ? (
-                                            <Users className="w-5 h-5 text-purple-600" />
-                                        ) : (
-                                            <MessageCircle className="w-5 h-5 text-blue-600" />
+                                    {/* Icon with online indicator */}
+                                    <div className="relative">
+                                        <div className={`p-2 rounded-full ${chat.type === 'group' ? 'bg-purple-100' : 'bg-blue-100'
+                                            }`}>
+                                            {chat.type === 'group' ? (
+                                                <Users className="w-5 h-5 text-purple-600" />
+                                            ) : (
+                                                <MessageCircle className="w-5 h-5 text-blue-600" />
+                                            )}
+                                        </div>
+                                        {/* Online status indicator for direct chats */}
+                                        {chat.type === 'direct' && presenceInfo && (
+                                            <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white ${presenceInfo.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
+                                                }`} />
                                         )}
                                     </div>
 
@@ -134,6 +198,20 @@ export default function ConversationList({
                                                 </span>
                                             )}
                                         </div>
+
+                                        {/* Online status text for direct chats */}
+                                        {chat.type === 'direct' && presenceInfo && (
+                                            <div className="text-xs mb-1">
+                                                {presenceInfo.status === 'online' ? (
+                                                    <span className="text-green-600 font-medium">● Online</span>
+                                                ) : (
+                                                    <span className="text-gray-500">
+                                                        Last seen {formatLastSeen(presenceInfo.lastSeen)}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {chat.lastMessage && (
                                             <p className="text-sm text-gray-600 truncate">
                                                 {chat.lastMessageSender && chat.lastMessageSender !== 'You' ? (
