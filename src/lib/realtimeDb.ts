@@ -91,8 +91,12 @@ export const markMessagesAsRead = async (
     snapshot.forEach((childSnapshot) => {
         const messageId = childSnapshot.key;
         const messageData = childSnapshot.val();
-        // Only mark as read if user didn't send it
-        if (messageData.senderId !== userId) {
+
+        // Only mark as read if:
+        // 1. User didn't send it
+        // 2. It hasn't been read by this user yet
+        if (messageData.senderId !== userId &&
+            (!messageData.readBy || !messageData.readBy[userId])) {
             updates[`${messageId}/read/${userId}`] = true;
             updates[`${messageId}/readBy/${userId}`] = readTimestamp;
         }

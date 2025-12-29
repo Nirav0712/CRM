@@ -57,8 +57,13 @@ export default function MessageDisplay({ chatId, currentUserId, currentUserName 
             setMessages(newMessages);
             setLoading(false);
 
-            // Mark messages as read
-            if (newMessages.length > 0) {
+            // Mark only unread messages as read (prevent continuous updates)
+            const unreadMessages = newMessages.filter(msg =>
+                msg.senderId !== currentUserId && // Not sent by current user
+                (!msg.readBy || !msg.readBy[currentUserId]) // Not already read
+            );
+
+            if (unreadMessages.length > 0) {
                 markMessagesAsRead(chatId, currentUserId);
             }
         });
