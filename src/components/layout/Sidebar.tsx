@@ -18,6 +18,7 @@ import {
     Clock,
     Settings,
     Building2,
+    MessageCircle,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ const navigation = [
     { name: "Leads", href: "/dashboard/leads", icon: Users },
     { name: "Add Lead", href: "/dashboard/leads/new", icon: UserPlus },
     { name: "Clients", href: "/dashboard/clients", icon: Building2 },
+    { name: "Chat", href: "/dashboard/chat", icon: MessageCircle },
     { name: "Attendance", href: "/dashboard/attendance", icon: Calendar },
     { name: "Tasks", href: "/dashboard/tasks", icon: ClipboardList },
     { name: "Sources", href: "/dashboard/sources", icon: Layers },
