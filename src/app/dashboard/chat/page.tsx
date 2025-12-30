@@ -58,20 +58,20 @@ export default function ChatPage() {
     const isAdmin = session.user.role === 'ADMIN';
 
     return (
-        <div className="p-6">
-            <div className="mb-6">
+        <div>
+            {/* <div className="mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Chat</h1>
                 <p className="text-gray-600 mt-1">
                     {isAdmin
                         ? 'Communicate with your team and monitor all conversations'
                         : 'Communicate with your team members'}
                 </p>
-            </div>
+            </div> */}
 
             {/* Regular Chat Interface */}
-            <div className="mb-8">
+            <div className="mb-1">
                 {/* Notification Settings */}
-                <div className="mb-4">
+                <div className="mb-1">
                     <NotificationSettings />
                 </div>
 
