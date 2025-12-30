@@ -400,7 +400,7 @@ export default function AttendancePage() {
 
             {/* Status Cards (Staff Only) */}
             {!isAdmin && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="hidden md:grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Today's Action */}
                     <div className="card p-6 md:col-span-2">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Attendance</h3>
