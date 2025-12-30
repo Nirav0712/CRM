@@ -16,15 +16,20 @@ export async function GET(request: NextRequest) {
 
         const { searchParams } = new URL(request.url);
         const userId = searchParams.get("userId");
+        const staffId = searchParams.get("staffId"); // For admin filtering by staff
         const clientId = searchParams.get("clientId");
         const date = searchParams.get("date");
         const month = searchParams.get("month"); // Format: YYYY-MM
+        const search = searchParams.get("search"); // Search query
 
         let query: any = db.collection("tasks");
 
         // Staff can only see their own tasks
         if ((session.user as any).role === "STAFF") {
             query = query.where("userId", "==", (session.user as any).id);
+        } else if (staffId) {
+            // Admin filtering by specific staff member
+            query = query.where("userId", "==", staffId);
         } else if (userId) {
             query = query.where("userId", "==", userId);
         }
@@ -96,6 +101,17 @@ export async function GET(request: NextRequest) {
         // Filter by clientId (in-memory)
         if (clientId) {
             tasks = tasks.filter(t => t.clientId === clientId);
+        }
+
+        // Filter by search query (in-memory) - search in title, description, client name
+        if (search) {
+            const searchLower = search.toLowerCase();
+            tasks = tasks.filter(t => {
+                const titleMatch = t.title?.toLowerCase().includes(searchLower);
+                const descMatch = t.description?.toLowerCase().includes(searchLower);
+                const clientMatch = t.client?.name?.toLowerCase().includes(searchLower);
+                return titleMatch || descMatch || clientMatch;
+            });
         }
 
         // Filter by specific date (in-memory)

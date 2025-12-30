@@ -15,6 +15,7 @@ import {
     Send,
     User,
     LogOut,
+    Search,
 } from "lucide-react";
 
 interface Attendance {
@@ -122,6 +123,7 @@ export default function AttendancePage() {
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     });
+    const [staffSearchQuery, setStaffSearchQuery] = useState("");
 
     // Leave form state
     const [leaveData, setLeaveData] = useState({
@@ -361,6 +363,22 @@ export default function AttendancePage() {
                         {isAdmin ? "View staff attendance records" : "Manage your daily attendance"}
                     </p>
                 </div>
+            </div>
+
+            {/* Search and Month Filter Row */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+                {isAdmin && (
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                            type="text"
+                            value={staffSearchQuery}
+                            onChange={(e) => setStaffSearchQuery(e.target.value)}
+                            placeholder="Search by staff name..."
+                            className="input pl-10 w-full"
+                        />
+                    </div>
+                )}
                 <div className="flex items-center gap-4">
                     <input
                         type="month"
@@ -497,159 +515,180 @@ export default function AttendancePage() {
                 {loading ? (
                     <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary-500" /></div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        {activeTab === "attendance" ? (
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-100">
-                                    <tr>
-                                        {isAdmin && <th className="p-4 font-medium text-gray-500">Staff</th>}
-                                        <th className="p-4 font-medium text-gray-500">Date</th>
-                                        <th className="p-4 font-medium text-gray-500">Status</th>
-                                        <th className="p-4 font-medium text-gray-500">Check In</th>
-                                        <th className="p-4 font-medium text-gray-500">Check Out</th>
-                                        <th className="p-4 font-medium text-gray-500">Duration</th>
-                                        {isAdmin && <th className="p-4 font-medium text-gray-500">Location</th>}
-                                        <th className="p-4 font-medium text-gray-500">Approval</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {attendance.length > 0 ? (
-                                        attendance.map((record) => (
-                                            <tr key={record.id} className="hover:bg-gray-50">
-                                                {isAdmin && (
-                                                    <td className="p-4 font-medium text-gray-900">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs">
-                                                                {record.user.name.charAt(0)}
-                                                            </div>
-                                                            {record.user.name}
-                                                        </div>
-                                                    </td>
-                                                )}
-                                                <td className="p-4 text-gray-600">
-                                                    {formatDate(record.date)}
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`badge ${STATUS_COLORS[record.status]}`}>
-                                                        {record.status.replace("_", " ")}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-gray-600 font-mono">
-                                                    {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                </td>
-                                                <td className="p-4 text-gray-600 font-mono">
-                                                    {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
-                                                </td>
-                                                <td className="p-4 text-gray-600 font-medium">
-                                                    {calculateDuration(record.checkIn, record.checkOut)}
-                                                </td>
-                                                {isAdmin && (
-                                                    <td className="p-4 text-gray-600 text-xs">
-                                                        {record.ipAddress ? (
-                                                            <div className="space-y-1">
-                                                                <div className="font-mono text-gray-500">
-                                                                    IP: {record.ipAddress}
-                                                                </div>
-                                                                {record.location && (
-                                                                    <div>
-                                                                        <a
-                                                                            href={`https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className="text-primary-600 hover:text-primary-700 underline"
-                                                                        >
-                                                                            {record.location.latitude.toFixed(4)}, {record.location.longitude.toFixed(4)}
-                                                                        </a>
+                    <>
+                        {/* Search Results Count */}
+                        {isAdmin && staffSearchQuery && (
+                            <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+                                <p className="text-sm text-gray-600">
+                                    Showing {attendance.filter(record =>
+                                        record.user?.name?.toLowerCase().includes(staffSearchQuery.toLowerCase())
+                                    ).length} of {attendance.length} records
+                                </p>
+                            </div>
+                        )}
+
+                        <div className="overflow-x-auto">
+                            {activeTab === "attendance" ? (
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-100">
+                                        <tr>
+                                            {isAdmin && <th className="p-4 font-medium text-gray-500">Staff</th>}
+                                            <th className="p-4 font-medium text-gray-500">Date</th>
+                                            <th className="p-4 font-medium text-gray-500">Status</th>
+                                            <th className="p-4 font-medium text-gray-500">Check In</th>
+                                            <th className="p-4 font-medium text-gray-500">Check Out</th>
+                                            <th className="p-4 font-medium text-gray-500">Duration</th>
+                                            {isAdmin && <th className="p-4 font-medium text-gray-500">Location</th>}
+                                            <th className="p-4 font-medium text-gray-500">Approval</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {attendance.length > 0 ? (
+                                            attendance
+                                                .filter(record => {
+                                                    // Filter by staff search query for admin
+                                                    if (isAdmin && staffSearchQuery) {
+                                                        return record.user?.name?.toLowerCase().includes(staffSearchQuery.toLowerCase());
+                                                    }
+                                                    return true;
+                                                })
+                                                .map((record) => (
+                                                    <tr key={record.id} className="hover:bg-gray-50">
+                                                        {isAdmin && (
+                                                            <td className="p-4 font-medium text-gray-900">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-xs">
+                                                                        {record.user.name.charAt(0)}
                                                                     </div>
+                                                                    {record.user.name}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        <td className="p-4 text-gray-600">
+                                                            {formatDate(record.date)}
+                                                        </td>
+                                                        <td className="p-4">
+                                                            <span className={`badge ${STATUS_COLORS[record.status]}`}>
+                                                                {record.status.replace("_", " ")}
+                                                            </span>
+                                                        </td>
+                                                        <td className="p-4 text-gray-600 font-mono">
+                                                            {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                        </td>
+                                                        <td className="p-4 text-gray-600 font-mono">
+                                                            {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                        </td>
+                                                        <td className="p-4 text-gray-600 font-medium">
+                                                            {calculateDuration(record.checkIn, record.checkOut)}
+                                                        </td>
+                                                        {isAdmin && (
+                                                            <td className="p-4 text-gray-600 text-xs">
+                                                                {record.ipAddress ? (
+                                                                    <div className="space-y-1">
+                                                                        <div className="font-mono text-gray-500">
+                                                                            IP: {record.ipAddress}
+                                                                        </div>
+                                                                        {record.location && (
+                                                                            <div>
+                                                                                <a
+                                                                                    href={`https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`}
+                                                                                    target="_blank"
+                                                                                    rel="noopener noreferrer"
+                                                                                    className="text-primary-600 hover:text-primary-700 underline"
+                                                                                >
+                                                                                    {record.location.latitude.toFixed(4)}, {record.location.longitude.toFixed(4)}
+                                                                                </a>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-gray-400">-</span>
                                                                 )}
+                                                            </td>
+                                                        )}
+                                                        <td className="p-4">
+                                                            <span className={`badge ${APPROVAL_COLORS[record.approvalStatus]}`}>
+                                                                {record.approvalStatus}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={isAdmin ? 8 : 6} className="p-8 text-center text-gray-500">
+                                                    No attendance records found for this month.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-100">
+                                        <tr>
+                                            <th className="p-4 font-medium text-gray-500">Period</th>
+                                            <th className="p-4 font-medium text-gray-500">Type</th>
+                                            <th className="p-4 font-medium text-gray-500">Reason</th>
+                                            <th className="p-4 font-medium text-gray-500">Status</th>
+                                            <th className="p-4 font-medium text-gray-500">Submitted</th>
+                                            <th className="p-4 font-medium text-gray-500">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {leaveRequests.length > 0 ? (
+                                            leaveRequests.map((leave) => (
+                                                <tr key={leave.id} className="hover:bg-gray-50">
+                                                    <td className="p-4 text-gray-600">
+                                                        {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <span className="badge bg-blue-100 text-blue-800">
+                                                            {leave.leaveType.replace("_", " ")}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4 text-gray-600 max-w-xs truncate">
+                                                        {leave.reason}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        <span className={`badge ${APPROVAL_COLORS[leave.status]}`}>
+                                                            {leave.status}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-4 text-gray-500">
+                                                        {formatDate(leave.createdAt)}
+                                                    </td>
+                                                    <td className="p-4">
+                                                        {leave.status === "PENDING" && (
+                                                            <div className="flex items-center gap-2">
+                                                                <button
+                                                                    onClick={() => handleEditLeave(leave)}
+                                                                    className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteLeave(leave.id)}
+                                                                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                                                                >
+                                                                    Delete
+                                                                </button>
                                                             </div>
-                                                        ) : (
-                                                            <span className="text-gray-400">-</span>
                                                         )}
                                                     </td>
-                                                )}
-                                                <td className="p-4">
-                                                    <span className={`badge ${APPROVAL_COLORS[record.approvalStatus]}`}>
-                                                        {record.approvalStatus}
-                                                    </span>
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={6} className="p-8 text-center text-gray-500">
+                                                    No leave requests found.
                                                 </td>
                                             </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan={isAdmin ? 8 : 6} className="p-8 text-center text-gray-500">
-                                                No attendance records found for this month.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        ) : (
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-100">
-                                    <tr>
-                                        <th className="p-4 font-medium text-gray-500">Period</th>
-                                        <th className="p-4 font-medium text-gray-500">Type</th>
-                                        <th className="p-4 font-medium text-gray-500">Reason</th>
-                                        <th className="p-4 font-medium text-gray-500">Status</th>
-                                        <th className="p-4 font-medium text-gray-500">Submitted</th>
-                                        <th className="p-4 font-medium text-gray-500">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {leaveRequests.length > 0 ? (
-                                        leaveRequests.map((leave) => (
-                                            <tr key={leave.id} className="hover:bg-gray-50">
-                                                <td className="p-4 text-gray-600">
-                                                    {formatDate(leave.startDate)} - {formatDate(leave.endDate)}
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className="badge bg-blue-100 text-blue-800">
-                                                        {leave.leaveType.replace("_", " ")}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-gray-600 max-w-xs truncate">
-                                                    {leave.reason}
-                                                </td>
-                                                <td className="p-4">
-                                                    <span className={`badge ${APPROVAL_COLORS[leave.status]}`}>
-                                                        {leave.status}
-                                                    </span>
-                                                </td>
-                                                <td className="p-4 text-gray-500">
-                                                    {formatDate(leave.createdAt)}
-                                                </td>
-                                                <td className="p-4">
-                                                    {leave.status === "PENDING" && (
-                                                        <div className="flex items-center gap-2">
-                                                            <button
-                                                                onClick={() => handleEditLeave(leave)}
-                                                                className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-                                                            >
-                                                                Edit
-                                                            </button>
-                                                            <button
-                                                                onClick={() => handleDeleteLeave(leave.id)}
-                                                                className="text-red-600 hover:text-red-700 text-sm font-medium"
-                                                            >
-                                                                Delete
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr>
-                                            <td colSpan={6} className="p-8 text-center text-gray-500">
-                                                No leave requests found.
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
+                                        )}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </>
                 )}
             </div>
 
