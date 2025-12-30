@@ -35,13 +35,13 @@ export default function NotificationSettings() {
     };
 
     return (
-        <div className="bg-white rounded-lg border p-4">
-            <div className="flex items-center justify-between mb-4">
+        <div className="bg-white rounded-lg">
+            {/* <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                     <Bell className="w-5 h-5 text-gray-600" />
                     <h3 className="font-semibold text-gray-900">Notifications</h3>
                 </div>
-            </div>
+            </div> */}
 
             {permission === 'default' && (
                 <button
@@ -65,7 +65,7 @@ export default function NotificationSettings() {
 
             {permission === 'granted' && (
                 <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    {/* <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                             <span className="text-sm font-medium text-green-800">
@@ -75,8 +75,8 @@ export default function NotificationSettings() {
                         <button
                             onClick={handleToggleMute}
                             className={`p-2 rounded-lg transition-colors ${muted
-                                    ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-                                    : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
+                                ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                                : 'bg-blue-100 text-blue-600 hover:bg-blue-200'
                                 }`}
                             title={muted ? 'Unmute notifications' : 'Mute notifications'}
                         >
@@ -86,13 +86,13 @@ export default function NotificationSettings() {
                                 <Volume2 className="w-4 h-4" />
                             )}
                         </button>
-                    </div>
+                    </div> */}
 
-                    <div className="text-xs text-gray-600 space-y-1">
+                    {/* <div className="text-xs text-gray-600 space-y-1">
                         <p>✓ New message alerts</p>
                         <p>✓ Works even when tab is inactive</p>
                         <p>✓ Priority messages with sound</p>
-                    </div>
+                    </div> */}
                 </div>
             )}
         </div>
