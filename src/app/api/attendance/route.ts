@@ -123,6 +123,15 @@ export async function POST(request: NextRequest) {
         const id = `${userId}_${date}`;
         const now = new Date();
 
+        // Helper to extract time from ISO string in local timezone
+        const extractLocalTime = (isoString: string) => {
+            const date = new Date(isoString);
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        };
+
         await db.execute(`
             INSERT INTO attendance (id, userId, date, status, checkIn, checkOut, note, approvalStatus, ipAddress, location, createdAt, updatedAt)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -136,8 +145,8 @@ export async function POST(request: NextRequest) {
                 updatedAt = VALUES(updatedAt)
         `, [
             id, userId, date, status,
-            checkIn ? new Date(checkIn).toTimeString().split(' ')[0] : null,
-            checkOut ? new Date(checkOut).toTimeString().split(' ')[0] : null,
+            checkIn ? extractLocalTime(checkIn) : null,
+            checkOut ? extractLocalTime(checkOut) : null,
             note || null, "PENDING", clientIp, location ? JSON.stringify(location) : null, now, now
         ]);
 
