@@ -45,6 +45,17 @@ const STATUS_COLORS: Record<string, string> = {
     PENDING: "bg-gray-100 text-gray-800",
 };
 
+// Helper to parse MySQL TIME with Date
+const parseAttendanceTime = (date: string, time: string | null) => {
+    if (!time) return null;
+    if (time.includes('T')) return new Date(time);
+
+    const [hours, minutes, seconds] = time.split(':').map(Number);
+    const d = new Date(date);
+    d.setHours(hours, minutes, seconds || 0);
+    return d;
+};
+
 export default function ApprovalsPage() {
     const { data: session } = useSession();
     const [attendanceRequests, setAttendanceRequests] = useState<Attendance[]>([]);
@@ -205,9 +216,15 @@ export default function ApprovalsPage() {
                                                                 <div className="flex items-center gap-2 text-xs bg-gray-50 px-2 py-1 rounded border border-gray-100">
                                                                     <Clock className="w-3 h-3 text-gray-400" />
                                                                     <span>
-                                                                        {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                        {(() => {
+                                                                            const dt = parseAttendanceTime(record.date, record.checkIn);
+                                                                            return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+                                                                        })()}
                                                                         {" - "}
-                                                                        {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                                                        {(() => {
+                                                                            const dt = parseAttendanceTime(record.date, record.checkOut);
+                                                                            return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+                                                                        })()}
                                                                     </span>
                                                                 </div>
                                                             )}
