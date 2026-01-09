@@ -1,6 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { db } from "./firebaseAdmin";
+import db from "./db";
 import bcrypt from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
@@ -19,16 +19,18 @@ export const authOptions: NextAuthOptions = {
                         throw new Error("Invalid credentials");
                     }
 
-                    const usersRef = db.collection("users");
-                    const snapshot = await usersRef.where("email", "==", credentials.email).limit(1).get();
+                    const email = credentials.email;
+                    const [rows]: any = await db.execute(
+                        "SELECT id, name, email, password, role FROM users WHERE email = ? LIMIT 1",
+                        [email]
+                    );
 
-                    if (snapshot.empty) {
-                        console.warn("User not found:", credentials.email);
+                    if (!rows || rows.length === 0) {
+                        console.warn("User not found:", email);
                         throw new Error("User not found");
                     }
 
-                    const userDoc = snapshot.docs[0];
-                    const user = userDoc.data();
+                    const user = rows[0];
 
                     const isPasswordValid = await bcrypt.compare(
                         credentials.password,
@@ -36,13 +38,13 @@ export const authOptions: NextAuthOptions = {
                     );
 
                     if (!isPasswordValid) {
-                        console.warn("Invalid password for:", credentials.email);
+                        console.warn("Invalid password for:", email);
                         throw new Error("Invalid password");
                     }
 
-                    console.log("Authorization successful for:", credentials.email);
+                    console.log("Authorization successful for:", email);
                     return {
-                        id: userDoc.id,
+                        id: user.id || user.id, // Support both if id is in data or just id
                         email: user.email,
                         name: user.name,
                         role: user.role as "ADMIN" | "STAFF",

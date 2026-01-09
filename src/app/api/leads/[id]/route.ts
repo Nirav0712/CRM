@@ -1,9 +1,9 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+
+export const dynamic = 'force-dynamic';
 
 // GET single lead
 export async function GET(
@@ -17,63 +17,52 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const leadDoc = await db.collection("leads").doc(params.id).get();
+        const [leadRows]: any = await db.execute(`
+            SELECT l.*, 
+                   s.name as sourceName,
+                   u.name as assignedToName, u.email as assignedToEmail
+            FROM leads l
+            LEFT JOIN lead_sources s ON l.sourceId = s.id
+            LEFT JOIN users u ON l.assignedToId = u.id
+            WHERE l.id = ?
+        `, [params.id]);
 
-        if (!leadDoc.exists) {
+        if (!leadRows || leadRows.length === 0) {
             return NextResponse.json({ error: "Lead not found" }, { status: 404 });
         }
 
-        const leadData = leadDoc.data();
-        const lead: any = {
-            id: leadDoc.id,
-            ...leadData,
-            createdAt: (leadData as any)?.createdAt?.toDate(),
-            updatedAt: (leadData as any)?.updatedAt?.toDate(),
-        };
+        const lead = leadRows[0];
 
         // Staff can only view their assigned leads
         if ((session.user as any).role === "STAFF" && lead.assignedToId !== (session.user as any).id) {
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        // Manual joins
-        // Fetch source
-        if (lead.sourceId) {
-            const sourceDoc = await db.collection("leadSources").doc(lead.sourceId).get();
-            if (sourceDoc.exists) {
-                (lead as any).source = { id: sourceDoc.id, ...sourceDoc.data() };
-            }
-        }
-
-        // Fetch assignedTo
-        if (lead.assignedToId) {
-            const userDoc = await db.collection("users").doc(lead.assignedToId).get();
-            if (userDoc.exists) {
-                const userData = userDoc.data();
-                (lead as any).assignedTo = { id: userDoc.id, name: userData?.name, email: userData?.email };
-            }
-        }
+        // Fetch source and assignedTo enriched objects (mapped from query results)
+        const enrichedLead = {
+            ...lead,
+            source: lead.sourceId ? { id: lead.sourceId, name: lead.sourceName } : null,
+            assignedTo: lead.assignedToId ? { id: lead.assignedToId, name: lead.assignedToName, email: lead.assignedToEmail } : null,
+        };
 
         // Fetch tags
-        if (lead.tagIds && lead.tagIds.length > 0) {
-            const tagsSnapshot = await db.collection("tags").where("__name__", "in", lead.tagIds).get();
-            (lead as any).tags = tagsSnapshot.docs.map((doc: any) => ({
-                tag: { id: doc.id, ...doc.data() }
-            }));
-        }
+        const [tagRows]: any = await db.execute(`
+            SELECT t.* 
+            FROM tags t
+            JOIN lead_tags lt ON t.id = lt.tagId
+            WHERE lt.leadId = ?
+        `, [params.id]);
+        enrichedLead.tags = tagRows.map((t: any) => ({ tag: t }));
 
         // Fetch status history
-        const statusHistorySnapshot = await db.collection("statusHistory")
-            .where("leadId", "==", params.id)
-            .orderBy("changedAt", "desc")
-            .get();
-        (lead as any).statusHistory = statusHistorySnapshot.docs.map((doc: any) => ({
-            id: doc.id,
-            ...doc.data(),
-            changedAt: doc.data().changedAt?.toDate()
-        }));
+        const [historyRows]: any = await db.execute(`
+            SELECT * FROM status_history
+            WHERE leadId = ?
+            ORDER BY changedAt DESC
+        `, [params.id]);
+        enrichedLead.statusHistory = historyRows;
 
-        return NextResponse.json(lead);
+        return NextResponse.json(enrichedLead);
     } catch (error) {
         console.error("Error fetching lead:", error);
         return NextResponse.json(
@@ -95,14 +84,13 @@ export async function PUT(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const leadRef = db.collection("leads").doc(params.id);
-        const leadDoc = await leadRef.get();
+        const [existingRows]: any = await db.execute("SELECT * FROM leads WHERE id = ?", [params.id]);
 
-        if (!leadDoc.exists) {
+        if (!existingRows || existingRows.length === 0) {
             return NextResponse.json({ error: "Lead not found" }, { status: 404 });
         }
 
-        const existingLead = leadDoc.data()!;
+        const existingLead = existingRows[0];
 
         // Staff can only edit their assigned leads
         if ((session.user as any).role === "STAFF" && existingLead.assignedToId !== (session.user as any).id) {
@@ -129,46 +117,56 @@ export async function PUT(
 
         // Only admin can reassign leads
         const finalAssignedToId =
-            (session.user as any).role === "ADMIN" && assignedToId
-                ? assignedToId
+            (session.user as any).role === "ADMIN" && assignedToId !== undefined
+                ? (assignedToId.trim() === "" ? null : assignedToId)
                 : existingLead.assignedToId;
 
+        const finalSourceId = (sourceId !== undefined && sourceId.trim() === "") ? null : sourceId;
+
         // Track status change
-        const statusChanged = status && status !== existingLead.status;
+        const statusChanged = status !== undefined && status !== existingLead.status;
 
         const now = new Date();
-        const updateData: any = {
-            updatedAt: now,
-        };
+        const fieldsToUpdate: string[] = ["updatedAt = ?"];
+        const updateParams: any[] = [now];
 
-        if (name !== undefined) updateData.name = name;
-        if (companyName !== undefined) updateData.companyName = companyName;
-        if (email !== undefined) updateData.email = email;
-        if (phone !== undefined) updateData.phone = phone;
-        if (address !== undefined) updateData.address = address;
-        if (city !== undefined) updateData.city = city;
-        if (country !== undefined) updateData.country = country;
-        if (website !== undefined) updateData.website = website;
-        if (leadValue !== undefined) updateData.leadValue = leadValue ? parseFloat(leadValue) : null;
-        if (description !== undefined) updateData.description = description;
-        if (status !== undefined) updateData.status = status;
-        if (sourceId !== undefined) updateData.sourceId = sourceId;
-        if (finalAssignedToId !== undefined) updateData.assignedToId = finalAssignedToId;
-        if (tagIds !== undefined) updateData.tagIds = tagIds;
+        if (name !== undefined) { fieldsToUpdate.push("name = ?"); updateParams.push(name); }
+        if (companyName !== undefined) { fieldsToUpdate.push("companyName = ?"); updateParams.push(companyName); }
+        if (email !== undefined) { fieldsToUpdate.push("email = ?"); updateParams.push(email); }
+        if (phone !== undefined) { fieldsToUpdate.push("phone = ?"); updateParams.push(phone); }
+        if (address !== undefined) { fieldsToUpdate.push("address = ?"); updateParams.push(address); }
+        if (city !== undefined) { fieldsToUpdate.push("city = ?"); updateParams.push(city); }
+        if (country !== undefined) { fieldsToUpdate.push("country = ?"); updateParams.push(country); }
+        if (website !== undefined) { fieldsToUpdate.push("website = ?"); updateParams.push(website); }
+        if (leadValue !== undefined) { fieldsToUpdate.push("leadValue = ?"); updateParams.push(leadValue ? parseFloat(leadValue) : null); }
+        if (description !== undefined) { fieldsToUpdate.push("description = ?"); updateParams.push(description); }
+        if (status !== undefined) { fieldsToUpdate.push("status = ?"); updateParams.push(status); }
+        if (finalSourceId !== undefined) { fieldsToUpdate.push("sourceId = ?"); updateParams.push(finalSourceId); }
+        if (finalAssignedToId !== undefined) { fieldsToUpdate.push("assignedToId = ?"); updateParams.push(finalAssignedToId); }
 
-        await leadRef.update(updateData);
+        updateParams.push(params.id);
+        await db.execute(`UPDATE leads SET ${fieldsToUpdate.join(", ")} WHERE id = ?`, updateParams);
 
         if (statusChanged) {
-            await db.collection("statusHistory").add({
-                leadId: params.id,
-                oldStatus: existingLead.status,
-                newStatus: status,
-                changedBy: session.user.name,
-                changedAt: now,
-            });
+            await db.execute(`
+                INSERT INTO status_history (leadId, oldStatus, newStatus, changedBy, changedAt)
+                VALUES (?, ?, ?, ?, ?)
+            `, [params.id, existingLead.status, status, session.user.name, now]);
         }
 
-        return NextResponse.json({ id: params.id, ...updateData });
+        // Update tags if provided
+        if (tagIds !== undefined) {
+            // Delete old tags
+            await db.execute("DELETE FROM lead_tags WHERE leadId = ?", [params.id]);
+            // Insert new tags
+            if (tagIds.length > 0) {
+                for (const tagId of tagIds) {
+                    await db.execute("INSERT INTO lead_tags (leadId, tagId) VALUES (?, ?)", [params.id, tagId]);
+                }
+            }
+        }
+
+        return NextResponse.json({ id: params.id, ...body, updatedAt: now });
     } catch (error) {
         console.error("Error updating lead:", error);
         return NextResponse.json(
@@ -194,11 +192,9 @@ export async function DELETE(
             return NextResponse.json({ error: "Forbidden" }, { status: 403 });
         }
 
-        // We should also delete status history, though it's not strictly required by Prisma's original code 
-        // (but Prisma lead model had onDelete: Cascade in theory, though the delete call didn't show it explicitly)
-        // Let's just delete the lead for now to match behavior.
-
-        await db.collection("leads").doc(params.id).delete();
+        // Schema should have CASCADE delete, but let's be explicit if needed.
+        // For MySQL, if relations are set up correctly, this will handle tags and status history.
+        await db.execute("DELETE FROM leads WHERE id = ?", [params.id]);
 
         return NextResponse.json({ message: "Lead deleted successfully" });
     } catch (error) {

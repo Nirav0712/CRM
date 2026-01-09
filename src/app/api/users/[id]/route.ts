@@ -1,9 +1,9 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+
+export const dynamic = 'force-dynamic';
 
 // DELETE user (admin only)
 export async function DELETE(
@@ -30,25 +30,22 @@ export async function DELETE(
         }
 
         // Check if user has leads assigned
-        const leadsSnapshot = await db.collection("leads")
-            .where("assignedToId", "==", params.id)
-            .limit(1)
-            .get();
+        const [leads]: any = await db.execute("SELECT id FROM leads WHERE assignedToId = ? LIMIT 1", [params.id]);
 
-        if (!leadsSnapshot.empty) {
+        if (leads && leads.length > 0) {
             return NextResponse.json(
                 { error: `Cannot delete user with assigned leads. Reassign leads first.` },
                 { status: 400 }
             );
         }
 
-        await db.collection("users").doc(params.id).delete();
+        await db.execute("DELETE FROM users WHERE id = ?", [params.id]);
 
         return NextResponse.json({ message: "User deleted successfully" });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting user:", error);
         return NextResponse.json(
-            { error: "Failed to delete user" },
+            { error: "Failed to delete user", details: error.message },
             { status: 500 }
         );
     }

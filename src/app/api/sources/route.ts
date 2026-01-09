@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // GET all sources
 export async function GET() {
@@ -14,13 +16,9 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const snapshot = await db.collection("leadSources").orderBy("name", "asc").get();
-        const sources = snapshot.docs.map((doc: any) => ({
-            id: doc.id,
-            ...doc.data(),
-        }));
+        const [rows]: any = await db.execute("SELECT * FROM lead_sources ORDER BY name ASC");
 
-        return NextResponse.json(sources);
+        return NextResponse.json(rows);
     } catch (error) {
         console.error("Error fetching sources:", error);
         return NextResponse.json(
@@ -49,24 +47,18 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if source already exists
-        const existingSnapshot = await db.collection("leadSources")
-            .where("name", "==", name)
-            .limit(1)
-            .get();
+        const [existing]: any = await db.execute("SELECT id, name FROM lead_sources WHERE name = ? LIMIT 1", [name]);
 
-        if (!existingSnapshot.empty) {
-            const existing = existingSnapshot.docs[0];
-            return NextResponse.json({ id: existing.id, ...existing.data() });
+        if (existing && existing.length > 0) {
+            return NextResponse.json(existing[0]);
         }
 
-        const newSource = {
-            name,
-            createdAt: new Date()
-        };
+        const id = generateId();
+        const now = new Date();
 
-        const docRef = await db.collection("leadSources").add(newSource);
+        await db.execute("INSERT INTO lead_sources (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)", [id, name, now, now]);
 
-        return NextResponse.json({ id: docRef.id, ...newSource }, { status: 201 });
+        return NextResponse.json({ id, name, createdAt: now }, { status: 201 });
     } catch (error) {
         console.error("Error creating source:", error);
         return NextResponse.json(

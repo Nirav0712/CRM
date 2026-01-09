@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
 
@@ -15,73 +15,55 @@ export async function GET(request: NextRequest) {
         }
 
         const { searchParams } = new URL(request.url);
-        const userId = searchParams.get("userId");
+        const userIdFilter = searchParams.get("userId");
         const month = searchParams.get("month"); // Format: YYYY-MM
-        const status = searchParams.get("status");
+        const statusFilter = searchParams.get("status");
         const isAdmin = (session.user as any).role === "ADMIN";
 
-        let query: any = db.collection("attendance");
+        let sql = `
+            SELECT a.*, u.name as userName, u.email as userEmail
+            FROM attendance a
+            LEFT JOIN users u ON a.userId = u.id
+            WHERE 1=1
+        `;
+        const params: any[] = [];
 
         // Staff can only see their own attendance
         if ((session.user as any).role === "STAFF") {
-            query = query.where("userId", "==", (session.user as any).id);
-        } else if (userId) {
-            query = query.where("userId", "==", userId);
+            sql += " AND a.userId = ?";
+            params.push((session.user as any).id);
+        } else if (userIdFilter) {
+            sql += " AND a.userId = ?";
+            params.push(userIdFilter);
         }
 
-        // We Fetch all records for the user and filter in-memory to be ROBUST against index issues
-        const snapshot = await query.get();
-        let attendance = await Promise.all(snapshot.docs.map(async (doc: any) => {
-            const data = doc.data();
-            let user = null;
-            if (data.userId) {
-                const userDoc = await db.collection("users").doc(data.userId).get();
-                if (userDoc.exists) {
-                    const userData = userDoc.data();
-                    user = { id: userDoc.id, name: userData?.name || "Unknown", email: userData?.email || "" };
-                }
-            }
-            if (!user) user = { id: data.userId || "deleted", name: "Deleted User", email: "" };
+        if (month) {
+            const [year, monthNum] = month.split("-");
+            sql += " AND YEAR(a.date) = ? AND MONTH(a.date) = ?";
+            params.push(year, monthNum);
+        }
 
-            const record: any = {
-                id: doc.id,
-                ...data,
-                date: data.date?.toDate(),
-                checkIn: data.checkIn?.toDate(),
-                checkOut: data.checkOut?.toDate(),
-                user
+        if (statusFilter) {
+            sql += " AND a.approvalStatus = ?";
+            params.push(statusFilter);
+        }
+
+        sql += " ORDER BY a.date DESC";
+
+        const [rows]: any = await db.execute(sql, params);
+
+        const attendance = rows.map((record: any) => {
+            const r = {
+                ...record,
+                location: record.location ? (typeof record.location === 'string' ? JSON.parse(record.location) : record.location) : null,
+                user: { id: record.userId, name: record.userName || "Unknown", email: record.userEmail || "" }
             };
-
             // Filter sensitive location data for staff users
             if (!isAdmin) {
-                delete record.ipAddress;
-                delete record.location;
+                delete r.ipAddress;
+                delete r.location;
             }
-
-            return record;
-        }));
-
-        // In-memory Filter by month
-        if (month) {
-            attendance = attendance.filter(record => {
-                if (!record.date) return false;
-                const d = new Date(record.date);
-                const year = d.getFullYear();
-                const monthNum = String(d.getMonth() + 1).padStart(2, '0');
-                return `${year}-${monthNum}` === month;
-            });
-        }
-
-        // In-memory Filter by approval status
-        if (status) {
-            attendance = attendance.filter(record => record.approvalStatus === status);
-        }
-
-        // Sort in-memory to be ROBUST against index requirements
-        attendance.sort((a, b) => {
-            const dateA = a.date instanceof Date ? a.date.getTime() : 0;
-            const dateB = b.date instanceof Date ? b.date.getTime() : 0;
-            return dateB - dateA;
+            return r;
         });
 
         return NextResponse.json(attendance);
@@ -108,35 +90,23 @@ export async function POST(request: NextRequest) {
         const realIp = request.headers.get("x-real-ip");
         let clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : (realIp || "127.0.0.1");
 
-        // Normalize IPs for local testing (mapping IPv6 loopback to IPv4)
+        // Normalize IPs for local testing
         const normalizeIp = (ip: string) => (ip === "::1" || ip === "::ffff:127.0.0.1") ? "127.0.0.1" : ip.trim();
         clientIp = normalizeIp(clientIp);
 
         // IP Restriction Check (only if enabled)
         if ((session.user as any).role === "STAFF") {
-            // Check if IP restriction is enabled
-            const ipRestrictionDoc = await db.collection("systemSettings")
-                .doc("ip_restriction")
-                .get();
+            const [restrictionRows]: any = await db.execute("SELECT `value` FROM settings WHERE `key` = 'ip_restriction' LIMIT 1");
+            const ipRestrictionEnabled = restrictionRows.length > 0 ? JSON.parse(restrictionRows[0].value) : true;
 
-            const ipRestrictionEnabled = ipRestrictionDoc.exists ? ipRestrictionDoc.data()?.enabled : true;
-
-            // Only enforce IP restriction if it's enabled
             if (ipRestrictionEnabled) {
-                const settingsDoc = await db.collection("systemSettings")
-                    .doc("office_ip")
-                    .get();
-
-                if (settingsDoc.exists) {
-                    const settings = settingsDoc.data();
-                    if (settings && settings.value) {
-                        const normalizedAllowed = normalizeIp(settings.value);
-
-                        if (clientIp !== normalizedAllowed) {
-                            return NextResponse.json({
-                                error: `Attendance can only be marked from the office network (Allowed: ${settings.value}, Your IP: ${clientIp})`
-                            }, { status: 403 });
-                        }
+                const [officeIpRows]: any = await db.execute("SELECT `value` FROM settings WHERE `key` = 'office_ip' LIMIT 1");
+                if (officeIpRows.length > 0) {
+                    const allowedIp = normalizeIp(JSON.parse(officeIpRows[0].value));
+                    if (clientIp !== allowedIp) {
+                        return NextResponse.json({
+                            error: `Attendance can only be marked from the office network (Allowed: ${allowedIp}, Your IP: ${clientIp})`
+                        }, { status: 403 });
                     }
                 }
             }
@@ -149,64 +119,32 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Date is required" }, { status: 400 });
         }
 
-        // Parse date reliably: YYYY-MM-DD
-        const [year, month, day] = date.split('-').map(Number);
-        const attendanceDate = new Date(year, month - 1, day);
-        attendanceDate.setHours(0, 0, 0, 0);
+        const userId = (session.user as any).id;
+        const id = `${userId}_${date}`;
+        const now = new Date();
 
-        // Use a composite ID for uniqueness: userId_YYYY-MM-DD
-        // We use the raw date string from the client to avoid any timezone shifting
-        const docId = `${(session.user as any).id}_${date}`;
-        const attendanceRef = db.collection("attendance").doc(docId);
-        const doc = await attendanceRef.get();
-        const existingData = doc.exists ? doc.data() : null;
+        await db.execute(`
+            INSERT INTO attendance (id, userId, date, status, checkIn, checkOut, note, approvalStatus, ipAddress, location, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+                status = VALUES(status), 
+                checkIn = COALESCE(VALUES(checkIn), checkIn), 
+                checkOut = COALESCE(VALUES(checkOut), checkOut), 
+                note = VALUES(note), 
+                ipAddress = VALUES(ipAddress), 
+                location = VALUES(location), 
+                updatedAt = VALUES(updatedAt)
+        `, [
+            id, userId, date, status,
+            checkIn ? new Date(checkIn).toTimeString().split(' ')[0] : null,
+            checkOut ? new Date(checkOut).toTimeString().split(' ')[0] : null,
+            note || null, "PENDING", clientIp, location ? JSON.stringify(location) : null, now, now
+        ]);
 
-        // Ensure we handle Firestore Timestamps correctly
-        const getAsDate = (val: any) => {
-            if (!val) return null;
-            if (val instanceof Date) return val;
-            if (typeof val.toDate === 'function') return val.toDate();
-            return new Date(val);
-        };
-
-        const data: any = {
-            userId: (session.user as any).id,
-            date: attendanceDate,
-            status,
-            checkIn: checkIn ? new Date(checkIn) : getAsDate(existingData?.checkIn),
-            checkOut: checkOut ? new Date(checkOut) : getAsDate(existingData?.checkOut),
-            note: note !== undefined ? note : (existingData?.note || null),
-            approvalStatus: "PENDING", // Always PENDING for admin review
-            ipAddress: clientIp, // Store IP address
-            updatedAt: new Date(),
-        };
-
-        // Add location data if provided (optional)
-        if (location && location.latitude && location.longitude) {
-            data.location = {
-                latitude: location.latitude,
-                longitude: location.longitude,
-                timestamp: location.timestamp || Date.now(),
-            };
-        }
-
-        if (!doc.exists) {
-            data.createdAt = new Date();
-            await attendanceRef.set(data);
-        } else {
-            await attendanceRef.update(data);
-        }
-
-        const result = {
-            id: docId,
-            ...data,
-            date: data.date.toISOString(),
-            checkIn: data.checkIn instanceof Date ? data.checkIn.toISOString() : null,
-            checkOut: data.checkOut instanceof Date ? data.checkOut.toISOString() : null,
-            user: { id: (session.user as any).id, name: session.user.name, email: session.user.email }
-        };
-
-        return NextResponse.json(result, { status: doc.exists ? 200 : 210 });
+        return NextResponse.json({
+            id, userId, date, status, checkIn, checkOut, note, approvalStatus: "PENDING", updatedAt: now,
+            user: { id: userId, name: session.user.name, email: session.user.email }
+        });
     } catch (error: any) {
         console.error("Error marking attendance:", error);
         return NextResponse.json(

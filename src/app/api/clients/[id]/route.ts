@@ -1,9 +1,9 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+
+export const dynamic = 'force-dynamic';
 
 // GET single client
 export async function GET(
@@ -17,19 +17,13 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const clientDoc = await db.collection("clients").doc(params.id).get();
+        const [rows]: any = await db.execute("SELECT * FROM clients WHERE id = ?", [params.id]);
 
-        if (!clientDoc.exists) {
+        if (rows.length === 0) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
 
-        const data = clientDoc.data()!;
-        return NextResponse.json({
-            id: clientDoc.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-        });
+        return NextResponse.json(rows[0]);
     } catch (error: any) {
         console.error("Error fetching client:", error);
         return NextResponse.json(
@@ -55,38 +49,34 @@ export async function PUT(
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
-        const clientRef = db.collection("clients").doc(params.id);
-        const clientDoc = await clientRef.get();
-
-        if (!clientDoc.exists) {
+        const [rows]: any = await db.execute("SELECT id FROM clients WHERE id = ?", [params.id]);
+        if (rows.length === 0) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
 
         const body = await request.json();
         const { name, email, phone, serviceType, address, notes } = body;
 
-        const updateData: any = {
-            updatedAt: new Date()
-        };
+        const updateFields: string[] = ["updatedAt = ?"];
+        const updateParams: any[] = [new Date()];
 
-        if (name !== undefined) updateData.name = name;
-        if (email !== undefined) updateData.email = email;
-        if (phone !== undefined) updateData.phone = phone;
-        if (serviceType !== undefined) updateData.serviceType = serviceType;
-        if (address !== undefined) updateData.address = address;
-        if (notes !== undefined) updateData.notes = notes;
+        if (name !== undefined) { updateFields.push("name = ?"); updateParams.push(name); }
+        if (email !== undefined) { updateFields.push("email = ?"); updateParams.push(email); }
+        if (phone !== undefined) { updateFields.push("phone = ?"); updateParams.push(phone); }
+        if (serviceType !== undefined) { updateFields.push("serviceType = ?"); updateParams.push(serviceType); }
+        if (address !== undefined) { updateFields.push("address = ?"); updateParams.push(address); }
+        if (notes !== undefined) { updateFields.push("notes = ?"); updateParams.push(notes); }
 
-        await clientRef.update(updateData);
+        updateParams.push(params.id);
 
-        const updatedDoc = await clientRef.get();
-        const data = updatedDoc.data()!;
+        await db.execute(`
+            UPDATE clients 
+            SET ${updateFields.join(", ")}
+            WHERE id = ?
+        `, updateParams);
 
-        return NextResponse.json({
-            id: params.id,
-            ...data,
-            createdAt: data.createdAt?.toDate?.() || data.createdAt,
-            updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-        });
+        const [updatedRows]: any = await db.execute("SELECT * FROM clients WHERE id = ?", [params.id]);
+        return NextResponse.json(updatedRows[0]);
     } catch (error: any) {
         console.error("Error updating client:", error);
         return NextResponse.json(
@@ -112,14 +102,12 @@ export async function DELETE(
             return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
         }
 
-        const clientRef = db.collection("clients").doc(params.id);
-        const clientDoc = await clientRef.get();
-
-        if (!clientDoc.exists) {
+        const [rows]: any = await db.execute("SELECT id FROM clients WHERE id = ?", [params.id]);
+        if (rows.length === 0) {
             return NextResponse.json({ error: "Client not found" }, { status: 404 });
         }
 
-        await clientRef.delete();
+        await db.execute("DELETE FROM clients WHERE id = ?", [params.id]);
 
         return NextResponse.json({ message: "Client deleted successfully" });
     } catch (error: any) {

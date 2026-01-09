@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import db from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,22 +13,13 @@ export async function GET() {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // Get all users for chat
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersRef);
+        const [rows]: any = await db.execute("SELECT id, name, email, role FROM users ORDER BY name ASC");
 
-        const users = usersSnapshot.docs.map(doc => ({
-            id: doc.id,
-            name: doc.data().name,
-            email: doc.data().email,
-            role: doc.data().role,
-        }));
-
-        return NextResponse.json({ users });
-    } catch (error) {
+        return NextResponse.json({ users: rows });
+    } catch (error: any) {
         console.error('Error fetching users:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch users' },
+            { error: 'Failed to fetch users', details: error.message },
             { status: 500 }
         );
     }

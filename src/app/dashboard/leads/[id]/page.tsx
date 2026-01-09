@@ -1,12 +1,12 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
 
 import Link from "next/link";
-import { formatCurrency, formatDate, formatDateTime, LEAD_STATUSES, LeadStatus } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
 import StatusBadge from "@/components/leads/StatusBadge";
 import {
     ArrowLeft,
@@ -34,75 +34,50 @@ export default async function LeadDetailPage({ params }: PageProps) {
         redirect("/login");
     }
 
-    const leadDoc = await db.collection("leads").doc(params.id).get();
+    const [leadRows]: any = await db.execute(`
+        SELECT l.*, s.name as sourceName, u.name as assignedToName, u.email as assignedToEmail
+        FROM leads l
+        LEFT JOIN lead_sources s ON l.sourceId = s.id
+        LEFT JOIN users u ON l.assignedToId = u.id
+        WHERE l.id = ?
+    `, [params.id]);
 
-    if (!leadDoc.exists) {
+    if (leadRows.length === 0) {
         notFound();
     }
 
-    const leadData = leadDoc.data()!;
+    const leadData = leadRows[0];
 
     // Staff can only view their assigned leads
     if ((session.user as any).role === "STAFF" && leadData.assignedToId !== (session.user as any).id) {
         redirect("/dashboard/leads");
     }
 
-    // Fetch related data
-    let source = null;
-    if (leadData.sourceId) {
-        const sourceDoc = await db.collection("leadSources").doc(leadData.sourceId).get();
-        if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
-    }
+    // Fetch tags
+    const [tagRows]: any = await db.execute(`
+        SELECT t.* FROM tags t
+        JOIN lead_tags lt ON t.id = lt.tagId
+        WHERE lt.leadId = ?
+    `, [params.id]);
 
-    let assignedTo = null;
-    if (leadData.assignedToId) {
-        const userDoc = await db.collection("users").doc(leadData.assignedToId).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            assignedTo = { id: userDoc.id, name: userData?.name, email: userData?.email };
-        }
-    }
-
-    const tagsSnapshot = await db.collection("tagOnLead")
-        .where("leadId", "==", params.id)
-        .get();
-
-    const tags = await Promise.all(tagsSnapshot.docs.map(async (doc: any) => {
-        const tol = doc.data();
-        const tagDoc = await db.collection("tags").doc(tol.tagId).get();
-        return {
-            tagId: tol.tagId,
-            tag: tagDoc.exists ? { id: tagDoc.id, ...tagDoc.data() } : null
-        };
-    }));
-
-    const statusHistorySnapshot = await db.collection("statusHistory")
-        .where("leadId", "==", params.id)
-        .get();
-
-    const statusHistory = statusHistorySnapshot.docs
-        .map((doc: any) => ({
-            id: doc.id,
-            ...doc.data(),
-            changedAt: doc.data().changedAt?.toDate()
-        }))
-        .sort((a: any, b: any) => {
-            // Sort by changedAt descending (newest first)
-            const timeA = a.changedAt?.getTime() || 0;
-            const timeB = b.changedAt?.getTime() || 0;
-            return timeB - timeA;
-        });
+    // Fetch status history
+    const [historyRows]: any = await db.execute(`
+        SELECT sh.*
+        FROM status_history sh
+        WHERE sh.leadId = ?
+        ORDER BY sh.changedAt DESC
+    `, [params.id]);
 
     const lead = {
-        id: leadDoc.id,
         ...leadData,
-        createdAt: leadData.createdAt?.toDate(),
-        updatedAt: leadData.updatedAt?.toDate(),
-        source,
-        assignedTo,
-        tags,
-        statusHistory
-    } as any;
+        source: leadData.sourceId ? { id: leadData.sourceId, name: leadData.sourceName } : null,
+        assignedTo: leadData.assignedToId ? { id: leadData.assignedToId, name: leadData.assignedToName, email: leadData.assignedToEmail } : null,
+        tags: tagRows.map((t: any) => ({ tagId: t.id, tag: t })),
+        statusHistory: historyRows.map((h: any) => ({
+            ...h,
+            changedBy: h.changedBy || "Unknown"
+        }))
+    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -211,7 +186,7 @@ export default async function LeadDetailPage({ params }: PageProps) {
                                 <div className="p-2 rounded-lg bg-gray-100">
                                     <MapPin className="w-5 h-5 text-gray-600" />
                                 </div>
-                                <div>
+                                <div className="flex-1">
                                     {lead.address && <p className="text-gray-900">{lead.address}</p>}
                                     <p className="text-gray-600">
                                         {[lead.city, lead.country].filter(Boolean).join(", ")}

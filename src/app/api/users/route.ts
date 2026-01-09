@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+import bcrypt from "bcryptjs";
 
 export const dynamic = 'force-dynamic';
-import bcrypt from "bcryptjs";
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // GET all users (for assignment dropdown)
 export async function GET() {
@@ -15,19 +17,9 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const snapshot = await db.collection("users").orderBy("name", "asc").get();
-        const users = snapshot.docs.map((doc: any) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                name: data.name,
-                email: data.email,
-                role: data.role,
-                createdAt: data.createdAt?.toDate(),
-            };
-        });
+        const [rows]: any = await db.execute("SELECT id, name, email, role, createdAt FROM users ORDER BY name ASC");
 
-        return NextResponse.json(users);
+        return NextResponse.json(rows);
     } catch (error) {
         console.error("Error fetching users:", error);
         return NextResponse.json(
@@ -60,12 +52,9 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if user already exists
-        const existingSnapshot = await db.collection("users")
-            .where("email", "==", email)
-            .limit(1)
-            .get();
+        const [existing]: any = await db.execute("SELECT id FROM users WHERE email = ? LIMIT 1", [email]);
 
-        if (!existingSnapshot.empty) {
+        if (existing && existing.length > 0) {
             return NextResponse.json(
                 { error: "User with this email already exists" },
                 { status: 400 }
@@ -73,21 +62,16 @@ export async function POST(request: NextRequest) {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-
+        const id = generateId();
         const now = new Date();
-        const userData = {
-            email,
-            password: hashedPassword,
-            name,
-            role,
-            createdAt: now,
-            updatedAt: now,
-        };
 
-        const docRef = await db.collection("users").add(userData);
+        await db.execute(`
+            INSERT INTO users (id, email, password, name, role, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [id, email, hashedPassword, name, role, now, now]);
 
         const result = {
-            id: docRef.id,
+            id,
             name,
             email,
             role,

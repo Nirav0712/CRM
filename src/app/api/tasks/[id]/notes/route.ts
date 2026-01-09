@@ -1,9 +1,11 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+
+export const dynamic = 'force-dynamic';
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // POST add note to task (admin can add notes/responses)
 export async function POST(
@@ -17,14 +19,13 @@ export async function POST(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const taskRef = db.collection("tasks").doc(params.id);
-        const taskDoc = await taskRef.get();
+        const [taskRows]: any = await db.execute("SELECT userId FROM tasks WHERE id = ?", [params.id]);
 
-        if (!taskDoc.exists) {
-            return NextResponse.json({ error: "Task not found" }, { status: 404 });
+        if (taskRows.length === 0) {
+            return NextResponse.json({ error: "Task found" }, { status: 404 });
         }
 
-        const taskData = taskDoc.data()!;
+        const taskData = taskRows[0];
 
         // Staff can only add notes to their own tasks, admin can add to any
         if ((session.user as any).role === "STAFF" && taskData.userId !== (session.user as any).id) {
@@ -38,28 +39,28 @@ export async function POST(
             return NextResponse.json({ error: "Content is required" }, { status: 400 });
         }
 
+        const id = generateId();
         const now = new Date();
-        const noteData = {
+        const userId = (session.user as any).id;
+
+        await db.execute(`
+            INSERT INTO task_notes (id, taskId, userId, content, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `, [id, params.id, userId, content, now, now]);
+
+        return NextResponse.json({
+            id,
             taskId: params.id,
-            userId: (session.user as any).id,
+            userId,
             content,
             createdAt: now,
             updatedAt: now,
-        };
-
-        const docRef = await db.collection("taskNotes").add(noteData);
-
-        const result = {
-            id: docRef.id,
-            ...noteData,
-            user: { id: (session.user as any).id, name: session.user.name }
-        };
-
-        return NextResponse.json(result, { status: 201 });
-    } catch (error) {
+            user: { id: userId, name: session.user.name }
+        }, { status: 201 });
+    } catch (error: any) {
         console.error("Error adding note:", error);
         return NextResponse.json(
-            { error: "Failed to add note" },
+            { error: "Failed to add note", details: error.message },
             { status: 500 }
         );
     }

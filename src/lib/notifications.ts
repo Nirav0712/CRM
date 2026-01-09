@@ -1,5 +1,6 @@
 /**
  * Browser Notification Utilities for Chat
+ * Standard browser-level notifications (Firebase removed)
  */
 
 export type NotificationPriority = 'high' | 'normal';
@@ -112,7 +113,7 @@ class ChatNotificationManager {
             notification.onclick = () => {
                 window.focus();
                 if (chatId) {
-                    // Navigate to chat - update this URL as needed
+                    // Navigate to chat
                     window.location.href = `/dashboard/chat?openChat=${chatId}`;
                 }
                 notification.close();
@@ -194,9 +195,14 @@ class ChatNotificationManager {
      * Clear all notifications for a chat
      */
     clearNotifications(chatId?: string): void {
-        // Note: There's no standard way to clear all notifications
-        // This is a placeholder for future implementation
         console.log('Clearing notifications for:', chatId);
+    }
+
+    /**
+     * Cleanup resources
+     */
+    destroy(): void {
+        // No FCM listener to unsubscribe from
     }
 }
 
@@ -223,3 +229,4 @@ export const notifyNewMessage = (
     isGroupChat,
     priority
 );
+

@@ -1,10 +1,10 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 import bcrypt from "bcryptjs";
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
     try {
@@ -31,15 +31,14 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Fetch the current user with password
-        const userRef = db.collection("users").doc((session.user as any).id);
-        const userDoc = await userRef.get();
+        const userId = (session.user as any).id;
+        const [rows]: any = await db.execute("SELECT password FROM users WHERE id = ?", [userId]);
 
-        if (!userDoc.exists) {
+        if (rows.length === 0) {
             return NextResponse.json({ error: "User not found" }, { status: 404 });
         }
 
-        const userData = userDoc.data()!;
+        const userData = rows[0];
 
         // Check current password
         const isPasswordValid = await bcrypt.compare(currentPassword, userData.password);
@@ -54,16 +53,14 @@ export async function POST(request: NextRequest) {
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
 
         // Update user
-        await userRef.update({
-            password: hashedNewPassword,
-            updatedAt: new Date()
-        });
+        const now = new Date();
+        await db.execute("UPDATE users SET password = ?, updatedAt = ? WHERE id = ?", [hashedNewPassword, now, userId]);
 
         return NextResponse.json({ message: "Password updated successfully" });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error changing password:", error);
         return NextResponse.json(
-            { error: "Failed to change password" },
+            { error: "Failed to change password", details: error.message },
             { status: 500 }
         );
     }

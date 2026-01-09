@@ -1,18 +1,3 @@
-import { realtimeDb } from './firebase';
-import {
-    ref,
-    push,
-    set,
-    onValue,
-    off,
-    update,
-    query,
-    orderByChild,
-    limitToLast,
-    serverTimestamp,
-    get,
-    DataSnapshot
-} from 'firebase/database';
 import { Message, Chat, TypingIndicator } from '@/types/chat';
 
 /**
@@ -25,54 +10,41 @@ export const sendMessage = async (
     text: string,
     senderRole?: string
 ): Promise<void> => {
-    const messagesRef = ref(realtimeDb, `chats/${chatId}/messages`);
-    const newMessageRef = push(messagesRef);
-
-    const message = {
-        senderId,
-        senderName,
-        senderRole: senderRole || 'STAFF',
-        text,
-        timestamp: Date.now(),
-        read: { [senderId]: true },
-        readBy: { [senderId]: Date.now() }
-    };
-
-    await set(newMessageRef, message);
-
-    // Update last message in chat info
-    const chatInfoRef = ref(realtimeDb, `chats/${chatId}/info`);
-    await update(chatInfoRef, {
-        lastMessage: text,
-        lastMessageTime: Date.now(),
-        lastMessageSender: senderName
+    const response = await fetch(`/api/chat/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, senderName, senderRole })
     });
+
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to send message');
+    }
 };
 
 /**
- * Subscribe to messages in a chat
+ * Subscribe to messages in a chat (using polling)
  */
 export const subscribeToMessages = (
     chatId: string,
     callback: (messages: Message[]) => void
 ): (() => void) => {
-    const messagesRef = ref(realtimeDb, `chats/${chatId}/messages`);
-    const messagesQuery = query(messagesRef, orderByChild('timestamp'), limitToLast(100));
+    const fetchMessages = async () => {
+        try {
+            const response = await fetch(`/api/chat/chats/${chatId}/messages`);
+            if (response.ok) {
+                const messages = await response.json();
+                callback(messages);
+            }
+        } catch (error) {
+            console.error('Error fetching messages:', error);
+        }
+    };
 
-    const unsubscribe = onValue(messagesQuery, (snapshot: DataSnapshot) => {
-        const messages: Message[] = [];
-        snapshot.forEach((childSnapshot) => {
-            const data = childSnapshot.val();
-            messages.push({
-                id: childSnapshot.key!,
-                chatId,
-                ...data
-            });
-        });
-        callback(messages);
-    });
+    fetchMessages();
+    const interval = setInterval(fetchMessages, 3000);
 
-    return () => off(messagesQuery);
+    return () => clearInterval(interval);
 };
 
 /**
@@ -82,29 +54,9 @@ export const markMessagesAsRead = async (
     chatId: string,
     userId: string
 ): Promise<void> => {
-    const messagesRef = ref(realtimeDb, `chats/${chatId}/messages`);
-    const snapshot = await get(messagesRef);
-
-    const updates: { [key: string]: any } = {};
-    const readTimestamp = Date.now();
-
-    snapshot.forEach((childSnapshot) => {
-        const messageId = childSnapshot.key;
-        const messageData = childSnapshot.val();
-
-        // Only mark as read if:
-        // 1. User didn't send it
-        // 2. It hasn't been read by this user yet
-        if (messageData.senderId !== userId &&
-            (!messageData.readBy || !messageData.readBy[userId])) {
-            updates[`${messageId}/read/${userId}`] = true;
-            updates[`${messageId}/readBy/${userId}`] = readTimestamp;
-        }
-    });
-
-    if (Object.keys(updates).length > 0) {
-        await update(messagesRef, updates);
-    }
+    // This is currently handled by the sender/fetcher logic in Frontend
+    // In MySQL we can implement a specific route if needed.
+    // For now we'll just ignore or implementation a PUT to messages.
 };
 
 /**
@@ -114,10 +66,10 @@ export const updateUserPresence = async (
     userId: string,
     status: 'online' | 'offline'
 ): Promise<void> => {
-    const presenceRef = ref(realtimeDb, `presence/${userId}`);
-    await set(presenceRef, {
-        status,
-        lastSeen: Date.now()
+    await fetch('/api/chat/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
     });
 };
 
@@ -128,16 +80,24 @@ export const subscribeToPresence = (
     userId: string,
     callback: (status: 'online' | 'offline', lastSeen: number) => void
 ): (() => void) => {
-    const presenceRef = ref(realtimeDb, `presence/${userId}`);
-
-    const unsubscribe = onValue(presenceRef, (snapshot: DataSnapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            callback(data.status, data.lastSeen);
+    const fetchPresence = async () => {
+        try {
+            const response = await fetch(`/api/chat/presence?userIds=${userId}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    callback(data[0].status, data[0].lastSeen);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching presence:', error);
         }
-    });
+    };
 
-    return () => off(presenceRef);
+    fetchPresence();
+    const interval = setInterval(fetchPresence, 10000);
+
+    return () => clearInterval(interval);
 };
 
 /**
@@ -149,16 +109,11 @@ export const updateTypingStatus = async (
     userName: string,
     isTyping: boolean
 ): Promise<void> => {
-    const typingRef = ref(realtimeDb, `typing/${chatId}/${userId}`);
-
-    if (isTyping) {
-        await set(typingRef, {
-            userName,
-            timestamp: Date.now()
-        });
-    } else {
-        await set(typingRef, null);
-    }
+    await fetch('/api/chat/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId, userName, isTyping })
+    });
 };
 
 /**
@@ -169,28 +124,24 @@ export const subscribeToTyping = (
     currentUserId: string,
     callback: (typingUsers: TypingIndicator[]) => void
 ): (() => void) => {
-    const typingRef = ref(realtimeDb, `typing/${chatId}`);
-
-    const unsubscribe = onValue(typingRef, (snapshot: DataSnapshot) => {
-        const typingUsers: TypingIndicator[] = [];
-        snapshot.forEach((childSnapshot) => {
-            const userId = childSnapshot.key!;
-            if (userId !== currentUserId) {
-                const data = childSnapshot.val();
-                // Only consider as typing if timestamp is within last 5 seconds
-                if (data && Date.now() - data.timestamp < 5000) {
-                    typingUsers.push({
-                        userId,
-                        userName: data.userName,
-                        timestamp: data.timestamp
-                    });
-                }
+    const fetchTyping = async () => {
+        try {
+            const response = await fetch(`/api/chat/typing?chatId=${chatId}`);
+            if (response.ok) {
+                const data = await response.json();
+                // Filter out current user
+                const typingUsers = data.filter((u: any) => u.userId !== currentUserId);
+                callback(typingUsers);
             }
-        });
-        callback(typingUsers);
-    });
+        } catch (error) {
+            console.error('Error fetching typing status:', error);
+        }
+    };
 
-    return () => off(typingRef);
+    fetchTyping();
+    const interval = setInterval(fetchTyping, 3000);
+
+    return () => clearInterval(interval);
 };
 
 /**
@@ -202,46 +153,29 @@ export const getOrCreateDirectChat = async (
     user1Name: string,
     user2Name: string
 ): Promise<string> => {
-    // Create a consistent chat ID by sorting user IDs
-    const chatId = [user1Id, user2Id].sort().join('_');
-    const fullChatId = `direct/${chatId}`;
-
-    const chatInfoRef = ref(realtimeDb, `chats/${fullChatId}/info`);
-    const snapshot = await get(chatInfoRef);
-
-    if (!snapshot.exists()) {
-        // Create new chat
-        await set(chatInfoRef, {
+    const response = await fetch('/api/chat/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
             type: 'direct',
-            participantIds: [user1Id, user2Id],
-            participantNames: {
-                [user1Id]: user1Name,
-                [user2Id]: user2Name
-            },
-            createdAt: Date.now()
-        });
+            participantIds: [user1Id, user2Id]
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error('Failed to get or create chat');
     }
 
-    return fullChatId;
+    const chat = await response.json();
+    return chat.id;
 };
 
 /**
  * Initialize group chat if it doesn't exist
  */
 export const initializeGroupChat = async (): Promise<string> => {
-    const chatId = 'group/office-all';
-    const chatInfoRef = ref(realtimeDb, `chats/${chatId}/info`);
-    const snapshot = await get(chatInfoRef);
-
-    if (!snapshot.exists()) {
-        await set(chatInfoRef, {
-            type: 'group',
-            name: 'All Office Members',
-            createdAt: Date.now()
-        });
-    }
-
-    return chatId;
+    // In MySQL we just expect group/office-all to exist or we handle it on server
+    return 'group/office-all';
 };
 
 /**
@@ -251,42 +185,22 @@ export const subscribeToUserChats = (
     userId: string,
     callback: (chats: Chat[]) => void
 ): (() => void) => {
-    const chatsRef = ref(realtimeDb, 'chats');
+    const fetchChats = async () => {
+        try {
+            const response = await fetch('/api/chat/chats');
+            if (response.ok) {
+                const chats = await response.json();
+                callback(chats);
+            }
+        } catch (error) {
+            console.error('Error fetching chats:', error);
+        }
+    };
 
-    const unsubscribe = onValue(chatsRef, (snapshot: DataSnapshot) => {
-        const chats: Chat[] = [];
+    fetchChats();
+    const interval = setInterval(fetchChats, 60000);
 
-        snapshot.forEach((typeSnapshot) => {
-            const type = typeSnapshot.key as 'group' | 'direct';
-
-            typeSnapshot.forEach((chatSnapshot) => {
-                const chatId = `${type}/${chatSnapshot.key}`;
-                const info = chatSnapshot.child('info').val();
-
-                if (info) {
-                    // Include group chats and direct chats where user is a participant
-                    if (type === 'group' || (info.participantIds && info.participantIds.includes(userId))) {
-                        chats.push({
-                            id: chatId,
-                            type,
-                            name: info.name || info.participantNames?.[type === 'direct' ?
-                                info.participantIds.find((id: string) => id !== userId) : ''] || 'Unknown',
-                            participantIds: info.participantIds || [],
-                            lastMessage: info.lastMessage,
-                            lastMessageTime: info.lastMessageTime,
-                            lastMessageSender: info.lastMessageSender
-                        });
-                    }
-                }
-            });
-        });
-
-        // Sort by last message time
-        chats.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
-        callback(chats);
-    });
-
-    return () => off(chatsRef);
+    return () => clearInterval(interval);
 };
 
 /**
@@ -295,36 +209,20 @@ export const subscribeToUserChats = (
 export const subscribeToAllChats = (
     callback: (chats: Chat[]) => void
 ): (() => void) => {
-    const chatsRef = ref(realtimeDb, 'chats');
+    const fetchAllChats = async () => {
+        try {
+            const response = await fetch('/api/chat/chats');
+            if (response.ok) {
+                const chats = await response.json();
+                callback(chats);
+            }
+        } catch (error) {
+            console.error('Error fetching all chats:', error);
+        }
+    };
 
-    const unsubscribe = onValue(chatsRef, (snapshot: DataSnapshot) => {
-        const chats: Chat[] = [];
+    fetchAllChats();
+    const interval = setInterval(fetchAllChats, 60000);
 
-        snapshot.forEach((typeSnapshot) => {
-            const type = typeSnapshot.key as 'group' | 'direct';
-
-            typeSnapshot.forEach((chatSnapshot) => {
-                const chatId = `${type}/${chatSnapshot.key}`;
-                const info = chatSnapshot.child('info').val();
-
-                if (info) {
-                    chats.push({
-                        id: chatId,
-                        type,
-                        name: info.name || 'Direct Chat',
-                        participantIds: info.participantIds || [],
-                        lastMessage: info.lastMessage,
-                        lastMessageTime: info.lastMessageTime,
-                        lastMessageSender: info.lastMessageSender
-                    });
-                }
-            });
-        });
-
-        // Sort by last message time
-        chats.sort((a, b) => (b.lastMessageTime || 0) - (a.lastMessageTime || 0));
-        callback(chats);
-    });
-
-    return () => off(chatsRef);
+    return () => clearInterval(interval);
 };

@@ -1,8 +1,9 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
 
@@ -18,80 +19,62 @@ import StatusBadge from "@/components/leads/StatusBadge";
 
 export default async function DashboardPage() {
     const session = await getServerSession(authOptions);
-    const userId = (session?.user as any)?.id;
-    const isAdmin = (session?.user as any)?.role === "ADMIN";
 
-    // Build query based on role
-    let leadsQuery: any = db.collection("leads");
-    if (!isAdmin) {
-        leadsQuery = leadsQuery.where("assignedToId", "==", userId);
+    if (!session?.user) {
+        redirect("/login");
     }
 
-    // Get stats
-    const [totalLeadsSnap, customersSnap, pendingLeadsSnap, allLeadsSnap, recentLeadsSnap] = await Promise.all([
-        leadsQuery.count().get(),
-        leadsQuery.where("status", "==", "CUSTOMER").count().get(),
-        leadsQuery.where("status", "==", "PENDING").count().get(),
-        leadsQuery.get(), // For total value sum (Firestore doesn't have aggregate sum yet)
-        leadsQuery.orderBy("createdAt", "desc").limit(5).get(),
-    ]);
+    const userId = (session.user as any).id;
+    const isAdmin = (session.user as any).role === "ADMIN";
 
-    const totalLeads = totalLeadsSnap.data().count;
-    const customers = customersSnap.data().count;
-    const pendingLeads = pendingLeadsSnap.data().count;
+    // Build stats query
+    const whereClause = isAdmin ? "" : "WHERE assignedToId = ?";
+    const params = isAdmin ? [] : [userId || null];
 
-    // Calculate total value
-    let totalValueSum = 0;
-    allLeadsSnap.docs.forEach((doc: any) => {
-        const val = doc.data().leadValue;
-        if (val) totalValueSum += parseFloat(val);
-    });
+    // Get counts
+    const [[{ totalLeads }]]: any = await db.execute(`SELECT COUNT(*) as totalLeads FROM leads ${whereClause}`, params);
+    const [[{ customers }]]: any = await db.execute(`SELECT COUNT(*) as customers FROM leads ${isAdmin ? "WHERE" : "WHERE assignedToId = ? AND"} status = 'CUSTOMER'`, params);
+    const [[{ pendingLeads }]]: any = await db.execute(`SELECT COUNT(*) as pendingLeads FROM leads ${isAdmin ? "WHERE" : "WHERE assignedToId = ? AND"} status = 'PENDING'`, params);
 
-    const recentLeads = await Promise.all(recentLeadsSnap.docs.map(async (doc: any) => {
-        const data = doc.data();
-        let source = null;
-        if (data.sourceId) {
-            const sourceDoc = await db.collection("leadSources").doc(data.sourceId).get();
-            if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
-        }
-        let assignedTo = null;
-        if (data.assignedToId) {
-            const userDoc = await db.collection("users").doc(data.assignedToId).get();
-            if (userDoc.exists) assignedTo = { name: userDoc.data()?.name };
-        }
-        return {
-            id: doc.id,
-            ...data,
-            source,
-            assignedTo
-        };
-    }));
+    // Total value
+    const [[{ totalValueSum }]]: any = await db.execute(`SELECT SUM(CAST(leadValue AS DECIMAL(10,2))) as totalValueSum FROM leads ${whereClause}`, params);
+
+    // Recent leads
+    const [recentLeadsRows]: any = await db.execute(`
+        SELECT l.*, s.name as sourceName, u.name as assignedToName
+        FROM leads l
+        LEFT JOIN lead_sources s ON l.sourceId = s.id
+        LEFT JOIN users u ON l.assignedToId = u.id
+        ${whereClause}
+        ORDER BY l.createdAt DESC
+        LIMIT 5
+    `, params);
 
     const stats = [
         {
             name: "Total Leads",
-            value: totalLeads,
+            value: totalLeads || 0,
             icon: Users,
             color: "bg-blue-500",
             href: "/dashboard/leads",
         },
         {
             name: "Customers",
-            value: customers,
+            value: customers || 0,
             icon: UserCheck,
             color: "bg-green-500",
             href: "/dashboard/leads?status=CUSTOMER",
         },
         {
             name: "Pending",
-            value: pendingLeads,
+            value: pendingLeads || 0,
             icon: Clock,
             color: "bg-yellow-500",
             href: "/dashboard/leads?status=PENDING",
         },
         {
             name: "Total Value",
-            value: formatCurrency(totalValueSum),
+            value: formatCurrency(totalValueSum || 0),
             icon: IndianRupee,
             color: "bg-purple-500",
             href: "/dashboard/leads",
@@ -141,8 +124,8 @@ export default async function DashboardPage() {
                     </Link>
                 </div>
                 <div className="divide-y divide-gray-100">
-                    {recentLeads.length > 0 ? (
-                        recentLeads.map((lead: any) => (
+                    {recentLeadsRows.length > 0 ? (
+                        recentLeadsRows.map((lead: any) => (
                             <Link
                                 key={lead.id}
                                 href={`/dashboard/leads/${lead.id}`}
@@ -151,7 +134,7 @@ export default async function DashboardPage() {
                                 <div className="flex items-center gap-4">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center">
                                         <span className="text-white font-medium text-sm">
-                                            {lead.name.charAt(0).toUpperCase()}
+                                            {lead.name?.charAt(0).toUpperCase()}
                                         </span>
                                     </div>
                                     <div>

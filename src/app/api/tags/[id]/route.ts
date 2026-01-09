@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
 
@@ -25,30 +25,33 @@ export async function PATCH(
             return NextResponse.json({ error: "Name is required" }, { status: 400 });
         }
 
-        const updateData: any = {
-            name: name.trim(),
-            updatedAt: new Date()
-        };
+        const now = new Date();
+        const updateFields = ["name = ?", "updatedAt = ?"];
+        const updateParams = [name.trim(), now];
 
         if (color) {
-            updateData.color = color;
+            updateFields.push("color = ?");
+            updateParams.push(color);
         }
 
-        await db.collection("tags").doc(id).update(updateData);
+        updateParams.push(id);
 
-        const doc = await db.collection("tags").doc(id).get();
-        const data = doc.data();
+        await db.execute(`
+            UPDATE tags 
+            SET ${updateFields.join(", ")}
+            WHERE id = ?
+        `, updateParams);
 
-        return NextResponse.json({
-            id: doc.id,
-            ...data,
-            createdAt: data?.createdAt?.toDate(),
-            updatedAt: data?.updatedAt?.toDate()
-        });
-    } catch (error) {
+        const [rows]: any = await db.execute("SELECT * FROM tags WHERE id = ?", [id]);
+        if (rows.length === 0) {
+            return NextResponse.json({ error: "Tag not found" }, { status: 404 });
+        }
+
+        return NextResponse.json(rows[0]);
+    } catch (error: any) {
         console.error("Error updating tag:", error);
         return NextResponse.json(
-            { error: "Failed to update tag" },
+            { error: "Failed to update tag", details: error.message },
             { status: 500 }
         );
     }
@@ -69,25 +72,22 @@ export async function DELETE(
         const { id } = params;
 
         // Check if tag is in use by any leads
-        const leadsWithTag = await db.collection("leads")
-            .where("tagIds", "array-contains", id)
-            .limit(1)
-            .get();
+        const [leadsWithTag]: any = await db.execute("SELECT leadId FROM lead_tags WHERE tagId = ? LIMIT 1", [id]);
 
-        if (!leadsWithTag.empty) {
+        if (leadsWithTag && leadsWithTag.length > 0) {
             return NextResponse.json(
                 { error: "Cannot delete tag that is in use by leads" },
                 { status: 400 }
             );
         }
 
-        await db.collection("tags").doc(id).delete();
+        await db.execute("DELETE FROM tags WHERE id = ?", [id]);
 
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting tag:", error);
         return NextResponse.json(
-            { error: "Failed to delete tag" },
+            { error: "Failed to delete tag", details: error.message },
             { status: 500 }
         );
     }

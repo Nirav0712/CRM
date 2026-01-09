@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // GET leave requests
 export async function GET(request: NextRequest) {
@@ -15,46 +17,35 @@ export async function GET(request: NextRequest) {
         }
 
         const { searchParams } = new URL(request.url);
-        const status = searchParams.get("status");
+        const statusFilter = searchParams.get("status");
 
-        let query: any = db.collection("leaveRequests");
+        let sql = `
+            SELECT lr.*, u.name as userName, u.email as userEmail
+            FROM leave_requests lr
+            LEFT JOIN users u ON lr.userId = u.id
+            WHERE 1=1
+        `;
+        const params: any[] = [];
 
         // Staff can only see their own leave requests
         if ((session.user as any).role === "STAFF") {
-            query = query.where("userId", "==", (session.user as any).id);
+            sql += " AND lr.userId = ?";
+            params.push((session.user as any).id);
         }
 
-        if (status) {
-            query = query.where("status", "==", status);
+        if (statusFilter) {
+            sql += " AND lr.status = ?";
+            params.push(statusFilter);
         }
 
-        const snapshot = await query.get();
-        const leaveRequests = await Promise.all(snapshot.docs.map(async (doc: any) => {
-            const data = doc.data();
-            let user = null;
-            if (data.userId) {
-                const userDoc = await db.collection("users").doc(data.userId).get();
-                if (userDoc.exists) {
-                    const userData = userDoc.data();
-                    user = { id: userDoc.id, name: userData?.name, email: userData?.email };
-                }
-            }
-            return {
-                id: doc.id,
-                ...data,
-                startDate: data.startDate?.toDate(),
-                endDate: data.endDate?.toDate(),
-                createdAt: data.createdAt?.toDate(),
-                user
-            };
+        sql += " ORDER BY lr.createdAt DESC";
+
+        const [rows]: any = await db.execute(sql, params);
+
+        const leaveRequests = rows.map((r: any) => ({
+            ...r,
+            user: { id: r.userId, name: r.userName, email: r.userEmail }
         }));
-
-        // Sort in-memory to avoid index requirements
-        leaveRequests.sort((a, b) => {
-            const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-            const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-            return dateB - dateA;
-        });
 
         return NextResponse.json(leaveRequests);
     } catch (error: any) {
@@ -85,21 +76,26 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const id = generateId();
         const now = new Date();
-        const leaveData = {
-            userId: (session.user as any).id,
+        const userId = (session.user as any).id;
+
+        await db.execute(`
+            INSERT INTO leave_requests (id, userId, startDate, endDate, leaveType, reason, status, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [id, userId, new Date(startDate), new Date(endDate), leaveType, reason || null, "PENDING", now, now]);
+
+        return NextResponse.json({
+            id,
+            userId,
             startDate: new Date(startDate),
             endDate: new Date(endDate),
             leaveType,
             reason,
             status: "PENDING",
             createdAt: now,
-            updatedAt: now,
-        };
-
-        const docRef = await db.collection("leaveRequests").add(leaveData);
-
-        return NextResponse.json({ id: docRef.id, ...leaveData }, { status: 201 });
+            updatedAt: now
+        }, { status: 201 });
     } catch (error: any) {
         console.error("Error creating leave request:", error);
         return NextResponse.json(

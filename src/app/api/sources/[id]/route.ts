@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
 
@@ -25,24 +25,19 @@ export async function PATCH(
             return NextResponse.json({ error: "Name is required" }, { status: 400 });
         }
 
-        await db.collection("sources").doc(id).update({
-            name: name.trim(),
-            updatedAt: new Date()
-        });
+        const now = new Date();
+        await db.execute("UPDATE lead_sources SET name = ?, updatedAt = ? WHERE id = ?", [name.trim(), now, id]);
 
-        const doc = await db.collection("sources").doc(id).get();
-        const data = doc.data();
+        const [rows]: any = await db.execute("SELECT * FROM lead_sources WHERE id = ?", [id]);
+        if (rows.length === 0) {
+            return NextResponse.json({ error: "Source not found" }, { status: 404 });
+        }
 
-        return NextResponse.json({
-            id: doc.id,
-            ...data,
-            createdAt: data?.createdAt?.toDate(),
-            updatedAt: data?.updatedAt?.toDate()
-        });
-    } catch (error) {
+        return NextResponse.json(rows[0]);
+    } catch (error: any) {
         console.error("Error updating source:", error);
         return NextResponse.json(
-            { error: "Failed to update source" },
+            { error: "Failed to update source", details: error.message },
             { status: 500 }
         );
     }
@@ -63,25 +58,22 @@ export async function DELETE(
         const { id } = params;
 
         // Check if source is in use
-        const leadsWithSource = await db.collection("leads")
-            .where("sourceId", "==", id)
-            .limit(1)
-            .get();
+        const [leadsWithSource]: any = await db.execute("SELECT id FROM leads WHERE sourceId = ? LIMIT 1", [id]);
 
-        if (!leadsWithSource.empty) {
+        if (leadsWithSource && leadsWithSource.length > 0) {
             return NextResponse.json(
                 { error: "Cannot delete source that is in use by leads" },
                 { status: 400 }
             );
         }
 
-        await db.collection("sources").doc(id).delete();
+        await db.execute("DELETE FROM lead_sources WHERE id = ?", [id]);
 
         return NextResponse.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting source:", error);
         return NextResponse.json(
-            { error: "Failed to delete source" },
+            { error: "Failed to delete source", details: error.message },
             { status: 500 }
         );
     }

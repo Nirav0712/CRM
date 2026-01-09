@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Bell, BellOff, Volume2, VolumeX } from 'lucide-react';
+import { Bell, Volume2, VolumeX, Check } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import {
     requestNotificationPermission,
     isNotificationEnabled,
@@ -10,9 +11,11 @@ import {
 } from '@/lib/notifications';
 
 export default function NotificationSettings() {
+    const { data: session } = useSession();
     const [enabled, setEnabled] = useState(false);
     const [muted, setMuted] = useState(false);
     const [permission, setPermission] = useState<NotificationPermission>('default');
+    const [isRegistering, setIsRegistering] = useState(false);
 
     useEffect(() => {
         setEnabled(isNotificationEnabled());
@@ -23,9 +26,23 @@ export default function NotificationSettings() {
     }, []);
 
     const handleEnableNotifications = async () => {
-        const granted = await requestNotificationPermission();
-        setEnabled(granted);
-        setPermission(granted ? 'granted' : 'denied');
+        if (!session?.user?.id) {
+            console.error('No user session');
+            return;
+        }
+
+        setIsRegistering(true);
+
+        try {
+            // Request basic notification permission
+            const granted = await requestNotificationPermission();
+            setEnabled(granted);
+            setPermission(granted ? 'granted' : 'denied');
+        } catch (error) {
+            console.error('Error enabling notifications:', error);
+        } finally {
+            setIsRegistering(false);
+        }
     };
 
     const handleToggleMute = () => {
@@ -36,20 +53,14 @@ export default function NotificationSettings() {
 
     return (
         <div className="bg-white rounded-lg">
-            {/* <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-gray-600" />
-                    <h3 className="font-semibold text-gray-900">Notifications</h3>
-                </div>
-            </div> */}
-
             {permission === 'default' && (
                 <button
                     onClick={handleEnableNotifications}
-                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                    disabled={isRegistering}
+                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     <Bell className="w-4 h-4" />
-                    Enable Desktop Notifications
+                    {isRegistering ? 'Enabling...' : 'Enable Desktop Notifications'}
                 </button>
             )}
 
@@ -65,12 +76,14 @@ export default function NotificationSettings() {
 
             {permission === 'granted' && (
                 <div className="space-y-3">
-                    {/* <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                         <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                            <span className="text-sm font-medium text-green-800">
-                                Notifications Enabled
-                            </span>
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                            <div>
+                                <span className="text-sm font-medium text-green-800 block">
+                                    Notifications Enabled
+                                </span>
+                            </div>
                         </div>
                         <button
                             onClick={handleToggleMute}
@@ -86,15 +99,21 @@ export default function NotificationSettings() {
                                 <Volume2 className="w-4 h-4" />
                             )}
                         </button>
-                    </div> */}
+                    </div>
 
-                    {/* <div className="text-xs text-gray-600 space-y-1">
-                        <p>✓ New message alerts</p>
-                        <p>✓ Works even when tab is inactive</p>
-                        <p>✓ Priority messages with sound</p>
-                    </div> */}
+                    <div className="text-xs text-gray-600 space-y-1 pl-3">
+                        <p className="flex items-center gap-2">
+                            <Check className="w-3 h-3 text-green-600" />
+                            New message alerts
+                        </p>
+                        <p className="flex items-center gap-2">
+                            <Check className="w-3 h-3 text-green-600" />
+                            Priority messages with sound
+                        </p>
+                    </div>
                 </div>
             )}
         </div>
     );
 }
+

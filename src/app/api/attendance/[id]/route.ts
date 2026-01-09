@@ -1,9 +1,9 @@
-export const dynamic = 'force-dynamic';
-
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
+
+export const dynamic = 'force-dynamic';
 
 // PUT approve/reject attendance (admin only)
 export async function PUT(
@@ -31,47 +31,43 @@ export async function PUT(
             );
         }
 
-        const attendanceRef = db.collection("attendance").doc(params.id);
-        const attendanceDoc = await attendanceRef.get();
-
-        if (!attendanceDoc.exists) {
+        const [attendanceRows]: any = await db.execute("SELECT * FROM attendance WHERE id = ?", [params.id]);
+        if (attendanceRows.length === 0) {
             return NextResponse.json({ error: "Attendance record not found" }, { status: 404 });
         }
+        const existingData = attendanceRows[0];
 
-        const existingData = attendanceDoc.data()!;
+        const now = new Date();
+        const updateFields = ["approvalStatus = ?", "updatedAt = ?"];
+        const updateParams = [approvalStatus, now];
 
-        const updateData: any = {
-            approvalStatus,
-            approvedBy: session.user.name,
-            approvedAt: new Date(),
-            updatedAt: new Date()
-        };
-        if (note) updateData.note = note;
-        if (approvalStatus === "REJECTED") updateData.status = "ABSENT";
-
-        await attendanceRef.update(updateData);
-
-        // Fetch user for response
-        let user = null;
-        if (existingData.userId) {
-            const userDoc = await db.collection("users").doc(existingData.userId).get();
-            if (userDoc.exists) {
-                const userData = userDoc.data();
-                user = { id: userDoc.id, name: userData?.name, email: userData?.email };
-            }
+        if (note) {
+            updateFields.push("note = ?");
+            updateParams.push(note);
         }
+        if (approvalStatus === "REJECTED") {
+            updateFields.push("status = 'ABSENT'");
+        }
+
+        updateParams.push(params.id);
+
+        await db.execute(`
+            UPDATE attendance 
+            SET ${updateFields.join(", ")}
+            WHERE id = ?
+        `, updateParams);
 
         return NextResponse.json({
             id: params.id,
             ...existingData,
-            ...updateData,
-            date: existingData.date?.toDate(),
-            user
+            approvalStatus,
+            note: note || existingData.note,
+            updatedAt: now
         });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error updating attendance:", error);
         return NextResponse.json(
-            { error: "Failed to update attendance" },
+            { error: "Failed to update attendance", details: error.message },
             { status: 500 }
         );
     }

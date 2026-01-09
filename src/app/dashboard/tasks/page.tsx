@@ -445,7 +445,9 @@ export default function TasksPage() {
                                     {viewMode === "today" ? "Hours Today" : "Total Hours"}
                                 </p>
                                 <p className="text-xl font-bold text-gray-900">
-                                    {viewMode === "today" ? dailyStats.totalHours.toFixed(1) : totalHours.toFixed(1)}h
+                                    {viewMode === "today"
+                                        ? (Number(dailyStats.totalHours) || 0).toFixed(1)
+                                        : (Number(totalHours) || 0).toFixed(1)}h
                                 </p>
                             </div>
                         </div>
@@ -490,7 +492,7 @@ export default function TasksPage() {
                             </div>
                             <div>
                                 <p className="text-sm text-gray-500">Total Hours</p>
-                                <p className="text-xl font-bold text-gray-900">{totalHours.toFixed(1)}h</p>
+                                <p className="text-xl font-bold text-gray-900">{(Number(totalHours) || 0).toFixed(1)}h</p>
                             </div>
                         </div>
                     </div>

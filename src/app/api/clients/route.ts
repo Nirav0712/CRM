@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // Service types for clients
 const SERVICE_TYPES = [
@@ -31,27 +33,19 @@ export async function GET(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const serviceType = searchParams.get("serviceType");
 
-        const snapshot = await db.collection("clients").get();
+        let sql = "SELECT * FROM clients WHERE 1=1";
+        const params: any[] = [];
 
-        let clients = snapshot.docs.map((doc: any) => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                createdAt: data.createdAt?.toDate?.() || data.createdAt,
-                updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
-            };
-        });
-
-        // Filter by service type if provided
         if (serviceType) {
-            clients = clients.filter((c: any) => c.serviceType === serviceType);
+            sql += " AND serviceType = ?";
+            params.push(serviceType);
         }
 
-        // Sort by name
-        clients.sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+        sql += " ORDER BY name ASC";
 
-        return NextResponse.json(clients);
+        const [rows]: any = await db.execute(sql, params);
+
+        return NextResponse.json(rows);
     } catch (error: any) {
         console.error("Error fetching clients:", error);
         return NextResponse.json(
@@ -85,23 +79,17 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const id = generateId();
         const now = new Date();
-        const clientData = {
-            name,
-            email: email || "",
-            phone: phone || "",
-            serviceType,
-            address: address || "",
-            notes: notes || "",
-            createdAt: now,
-            updatedAt: now,
-            createdBy: (session.user as any).id,
-        };
+        const userId = (session.user as any).id;
 
-        const docRef = await db.collection("clients").add(clientData);
+        await db.execute(`
+            INSERT INTO clients (id, name, email, phone, serviceType, address, notes, createdBy, createdAt, updatedAt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [id, name, email || "", phone || "", serviceType, address || "", notes || "", userId, now, now]);
 
         return NextResponse.json(
-            { id: docRef.id, ...clientData },
+            { id, name, email, phone, serviceType, address, notes, createdBy: userId, createdAt: now, updatedAt: now },
             { status: 201 }
         );
     } catch (error: any) {

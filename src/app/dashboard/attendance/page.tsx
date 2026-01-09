@@ -50,12 +50,21 @@ const APPROVAL_COLORS: Record<string, string> = {
     REJECTED: "bg-red-100 text-red-800",
 };
 
+// Helper to parse MySQL TIME with Date
+const parseAttendanceTime = (date: string, time: string | null) => {
+    if (!time) return null;
+    if (time.includes('T')) return new Date(time);
+
+    const [hours, minutes, seconds] = time.split(':').map(Number);
+    const d = new Date(date);
+    d.setHours(hours, minutes, seconds || 0);
+    return d;
+};
+
 // Helper to calculate duration
-const calculateDuration = (checkIn: string | null, checkOut: string | null) => {
-    if (!checkIn || !checkOut) return "-";
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    const diff = end.getTime() - start.getTime();
+const calculateDuration = (checkInDate: Date | null, checkOutDate: Date | null) => {
+    if (!checkInDate || !checkOutDate) return "-";
+    const diff = checkOutDate.getTime() - checkInDate.getTime();
     if (diff < 0) return "Invalid";
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
@@ -438,12 +447,22 @@ export default function AttendancePage() {
                                     <div className="space-y-1">
                                         {todayRecord.checkIn && (
                                             <p className="text-sm font-medium text-gray-700">
-                                                Check In: <span className="font-mono text-gray-500">{new Date(todayRecord.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                Check In: <span className="font-mono text-gray-500">
+                                                    {(() => {
+                                                        const dt = parseAttendanceTime(todayRecord.date, todayRecord.checkIn);
+                                                        return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+                                                    })()}
+                                                </span>
                                             </p>
                                         )}
                                         {todayRecord.checkOut && (
                                             <p className="text-sm font-medium text-gray-700">
-                                                Check Out: <span className="font-mono text-gray-500">{new Date(todayRecord.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                Check Out: <span className="font-mono text-gray-500">
+                                                    {(() => {
+                                                        const dt = parseAttendanceTime(todayRecord.date, todayRecord.checkOut);
+                                                        return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+                                                    })()}
+                                                </span>
                                             </p>
                                         )}
                                     </div>
@@ -573,13 +592,22 @@ export default function AttendancePage() {
                                                             </span>
                                                         </td>
                                                         <td className="p-4 text-gray-600 font-mono">
-                                                            {record.checkIn ? new Date(record.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                            {(() => {
+                                                                const dt = parseAttendanceTime(record.date, record.checkIn);
+                                                                return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+                                                            })()}
                                                         </td>
                                                         <td className="p-4 text-gray-600 font-mono">
-                                                            {record.checkOut ? new Date(record.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}
+                                                            {(() => {
+                                                                const dt = parseAttendanceTime(record.date, record.checkOut);
+                                                                return dt ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-';
+                                                            })()}
                                                         </td>
                                                         <td className="p-4 text-gray-600 font-medium">
-                                                            {calculateDuration(record.checkIn, record.checkOut)}
+                                                            {calculateDuration(
+                                                                parseAttendanceTime(record.date, record.checkIn),
+                                                                parseAttendanceTime(record.date, record.checkOut)
+                                                            )}
                                                         </td>
                                                         {isAdmin && (
                                                             <td className="p-4 text-gray-600 text-xs">
@@ -588,7 +616,7 @@ export default function AttendancePage() {
                                                                         <div className="font-mono text-gray-500">
                                                                             IP: {record.ipAddress}
                                                                         </div>
-                                                                        {record.location && (
+                                                                        {record.location && typeof record.location.latitude === 'number' && typeof record.location.longitude === 'number' && (
                                                                             <div>
                                                                                 <a
                                                                                     href={`https://www.google.com/maps?q=${record.location.latitude},${record.location.longitude}`}

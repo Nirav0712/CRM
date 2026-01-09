@@ -1,0 +1,137 @@
+{
+    "rules": {
+        ".read": false,
+        ".write": false,
+        "chats": {
+            ".read": true,
+            "group": {
+                ".read": true,
+                "$groupChatId": {
+                    ".read": true,
+                    "info": {
+                        ".write": true
+                    },
+                    "messages": {
+                        "$messageId": {
+                            ".write": "!data.exists()",
+                            ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp'])",
+                            "senderId": {
+                                ".validate": "newData.isString()"
+                            },
+                            "senderName": {
+                                ".validate": "newData.isString()"
+                            },
+                            "senderRole": {
+                                ".validate": "newData.isString()"
+                            },
+                            "text": {
+                                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 5000"
+                            },
+                            "timestamp": {
+                                ".validate": "newData.isNumber()"
+                            },
+                            "read": {
+                                "$userId": {
+                                    ".write": true,
+                                    ".validate": "newData.isBoolean()"
+                                }
+                            },
+                            "readBy": {
+                                "$userId": {
+                                    ".write": true,
+                                    ".validate": "newData.isNumber()"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "direct": {
+                ".read": true,
+                "$directChatId": {
+                    ".read": true,
+                    "info": {
+                        ".write": true,
+                        ".validate": "newData.hasChildren(['type', 'participantIds', 'createdAt'])",
+                        "participantIds": {
+                            ".validate": "newData.val().length === 2"
+                        }
+                    },
+                    "messages": {
+                        "$messageId": {
+                            ".write": "!data.exists()",
+                            ".validate": "newData.hasChildren(['senderId', 'senderName', 'text', 'timestamp'])",
+                            "senderId": {
+                                ".validate": "newData.isString()"
+                            },
+                            "senderName": {
+                                ".validate": "newData.isString()"
+                            },
+                            "senderRole": {
+                                ".validate": "newData.isString()"
+                            },
+                            "text": {
+                                ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 5000"
+                            },
+                            "timestamp": {
+                                ".validate": "newData.isNumber()"
+                            },
+                            "read": {
+                                "$userId": {
+                                    ".write": true,
+                                    ".validate": "newData.isBoolean()"
+                                }
+                            },
+                            "readBy": {
+                                "$userId": {
+                                    ".write": true,
+                                    ".validate": "newData.isNumber()"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "presence": {
+            "$userId": {
+                ".read": true,
+                ".write": true,
+                ".validate": "newData.hasChildren(['status', 'lastSeen'])",
+                "status": {
+                    ".validate": "newData.val() === 'online' || newData.val() === 'offline'"
+                },
+                "lastSeen": {
+                    ".validate": "newData.isNumber()"
+                }
+            }
+        },
+        "typing": {
+            "$chatId": {
+                ".read": true,
+                "$userId": {
+                    ".write": true
+                }
+            }
+        },
+        "fcmTokens": {
+            "$userId": {
+                ".read": true,
+                ".write": true,
+                "$deviceId": {
+                    ".validate": "newData.hasChildren(['token', 'createdAt'])",
+                    "token": {
+                        ".validate": "newData.isString() && newData.val().length > 0"
+                    },
+                    "deviceInfo": {},
+                    "createdAt": {
+                        ".validate": "newData.isNumber()"
+                    },
+                    "lastRefreshed": {
+                        ".validate": "newData.isNumber()"
+                    }
+                }
+            }
+        }
+    }
+}

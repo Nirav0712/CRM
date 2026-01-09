@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import LeadForm from "@/components/leads/LeadForm";
@@ -20,58 +20,40 @@ export default async function EditLeadPage({ params }: PageProps) {
         redirect("/login");
     }
 
-    const leadDoc = await db.collection("leads").doc(params.id).get();
+    const [leadRows]: any = await db.execute(`
+        SELECT l.*, s.name as sourceName, u.name as assignedToName, u.email as assignedToEmail
+        FROM leads l
+        LEFT JOIN lead_sources s ON l.sourceId = s.id
+        LEFT JOIN users u ON l.assignedToId = u.id
+        WHERE l.id = ?
+    `, [params.id]);
 
-    if (!leadDoc.exists) {
+    if (leadRows.length === 0) {
         notFound();
     }
 
-    const leadData = leadDoc.data()!;
+    const leadData = leadRows[0];
 
     // Staff can only edit their assigned leads
     if ((session.user as any).role === "STAFF" && leadData.assignedToId !== (session.user as any).id) {
         redirect("/dashboard/leads");
     }
 
-    // Fetch related data for form
-    let source = null;
-    if (leadData.sourceId) {
-        const sourceDoc = await db.collection("leadSources").doc(leadData.sourceId).get();
-        if (sourceDoc.exists) source = { id: sourceDoc.id, ...sourceDoc.data() };
-    }
+    // Fetch tags
+    const [tagRows]: any = await db.execute(`
+        SELECT t.* FROM tags t
+        JOIN lead_tags lt ON t.id = lt.tagId
+        WHERE lt.leadId = ?
+    `, [params.id]);
 
-    let assignedTo = null;
-    if (leadData.assignedToId) {
-        const userDoc = await db.collection("users").doc(leadData.assignedToId).get();
-        if (userDoc.exists) {
-            const userData = userDoc.data();
-            assignedTo = { id: userDoc.id, name: userData?.name, email: userData?.email };
-        }
-    }
-
-    const tagsSnapshot = await db.collection("tagOnLead")
-        .where("leadId", "==", params.id)
-        .get();
-
-    const tags = await Promise.all(tagsSnapshot.docs.map(async (doc: any) => {
-        const tol = doc.data();
-        const tagDoc = await db.collection("tags").doc(tol.tagId).get();
-        return {
-            tagId: tol.tagId,
-            tag: tagDoc.exists ? { id: tagDoc.id, ...tagDoc.data() } : null
-        };
-    }));
-
-    // Serialize the lead data to JSON-safe format (converts Timestamps to strings)
-    const serializedLead = JSON.parse(JSON.stringify({
-        id: leadDoc.id,
+    const serializedLead = {
         ...leadData,
-        createdAt: leadData.createdAt?.toDate() || null,
-        updatedAt: leadData.updatedAt?.toDate() || null,
-        source,
-        assignedTo,
-        tags
-    }));
+        source: leadData.sourceId ? { id: leadData.sourceId, name: leadData.sourceName } : null,
+        assignedTo: leadData.assignedToId ? { id: leadData.assignedToId, name: leadData.assignedToName, email: leadData.assignedToEmail } : null,
+        tags: tagRows.map((t: any) => ({ tagId: t.id, tag: t })),
+        createdAt: leadData.createdAt ? new Date(leadData.createdAt).toISOString() : null,
+        updatedAt: leadData.updatedAt ? new Date(leadData.updatedAt).toISOString() : null
+    };
 
     return (
         <div className="max-w-4xl mx-auto space-y-6">
@@ -84,7 +66,7 @@ export default async function EditLeadPage({ params }: PageProps) {
                 </Link>
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Edit Lead</h1>
-                    <p className="text-gray-500">{(serializedLead as any).name}</p>
+                    <p className="text-gray-500">{serializedLead.name}</p>
                 </div>
             </div>
 

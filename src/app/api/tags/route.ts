@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/firebaseAdmin";
+import db from "@/lib/db";
 
 export const dynamic = 'force-dynamic';
+
+const generateId = () => Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
 
 // GET all tags
 export async function GET() {
@@ -14,10 +16,9 @@ export async function GET() {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const snapshot = await db.collection("tags").orderBy("name", "asc").get();
-        const tags = snapshot.docs.map((doc: any) => ({ id: doc.id, ...doc.data() }));
+        const [rows]: any = await db.execute("SELECT * FROM tags ORDER BY name ASC");
 
-        return NextResponse.json(tags);
+        return NextResponse.json(rows);
     } catch (error) {
         console.error("Error fetching tags:", error);
         return NextResponse.json(
@@ -46,25 +47,18 @@ export async function POST(request: NextRequest) {
         }
 
         // Check if tag already exists
-        const existingSnapshot = await db.collection("tags")
-            .where("name", "==", name)
-            .limit(1)
-            .get();
+        const [existing]: any = await db.execute("SELECT id, name, color FROM tags WHERE name = ? LIMIT 1", [name]);
 
-        if (!existingSnapshot.empty) {
-            const existing = existingSnapshot.docs[0];
-            return NextResponse.json({ id: existing.id, ...existing.data() });
+        if (existing && existing.length > 0) {
+            return NextResponse.json(existing[0]);
         }
 
-        const newTag = {
-            name,
-            color,
-            createdAt: new Date()
-        };
+        const id = generateId();
+        const now = new Date();
 
-        const docRef = await db.collection("tags").add(newTag);
+        await db.execute("INSERT INTO tags (id, name, color, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)", [id, name, color, now, now]);
 
-        return NextResponse.json({ id: docRef.id, ...newTag }, { status: 201 });
+        return NextResponse.json({ id, name, color, createdAt: now }, { status: 201 });
     } catch (error) {
         console.error("Error creating tag:", error);
         return NextResponse.json(
