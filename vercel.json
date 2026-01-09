@@ -1,0 +1,9 @@
+{
+    "env": {
+        "NEXTAUTH_SECRET": "@nextauth-secret",
+        "MYSQL_HOST": "@mysql-host",
+        "MYSQL_USER": "@mysql-user",
+        "MYSQL_PASSWORD": "@mysql-password",
+        "MYSQL_DATABASE": "@mysql-database"
+    }
+}
