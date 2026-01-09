@@ -13,6 +13,10 @@ export const authOptions: NextAuthOptions = {
             },
             async authorize(credentials) {
                 try {
+                    // Diagnostic logging for Vercel
+                    if (!process.env.NEXTAUTH_SECRET) console.error("CRITICAL: NEXTAUTH_SECRET is not set in environment");
+                    if (!process.env.MYSQL_HOST) console.error("CRITICAL: MYSQL_HOST is not set in environment");
+
                     console.log("Starting authorization for:", credentials?.email);
                     if (!credentials?.email || !credentials?.password) {
                         console.warn("Invalid credentials provided");
