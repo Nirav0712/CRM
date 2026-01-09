@@ -30,8 +30,8 @@ export default function SettingsPage() {
             if (res.ok) {
                 setCurrentConfiguredIp(data.office_ip);
                 setIpValue(data.office_ip || "");
-                setLocationTrackingEnabled(data.location_tracking_enabled !== false);
-                setIpRestrictionEnabled(data.ip_restriction_enabled !== false); // Default to true
+                setLocationTrackingEnabled(data.location_tracking_enabled);
+                setIpRestrictionEnabled(data.ip_restriction_enabled);
             }
         } catch (error) {
             console.error(error);
@@ -251,8 +251,8 @@ export default function SettingsPage() {
                         </div>
                         <div className="mt-2 flex items-center gap-2">
                             <span className={`text-xs font-medium px-2 py-1 rounded ${ipRestrictionEnabled
-                                    ? 'bg-red-100 text-red-700'
-                                    : 'bg-green-100 text-green-600'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-green-100 text-green-600'
                                 }`}>
                                 {ipRestrictionEnabled ? '🔒 Restricted' : '🌍 Allowed from anywhere'}
                             </span>

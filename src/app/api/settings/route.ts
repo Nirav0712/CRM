@@ -15,7 +15,11 @@ export async function GET(request: NextRequest) {
         const [rows]: any = await db.execute("SELECT `key`, `value` FROM settings");
         const settings: any = {};
         rows.forEach((row: any) => {
-            settings[row.key] = row.value;
+            try {
+                settings[row.key] = typeof row.value === "string" ? JSON.parse(row.value) : row.value;
+            } catch (e) {
+                settings[row.key] = row.value;
+            }
         });
 
         return NextResponse.json({
@@ -76,7 +80,11 @@ export async function POST(request: NextRequest) {
         const [rows]: any = await db.execute("SELECT `key`, `value` FROM settings");
         const settings: any = {};
         rows.forEach((row: any) => {
-            settings[row.key] = row.value;
+            try {
+                settings[row.key] = typeof row.value === "string" ? JSON.parse(row.value) : row.value;
+            } catch (e) {
+                settings[row.key] = row.value;
+            }
         });
 
         return NextResponse.json({
